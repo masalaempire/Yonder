@@ -197,16 +197,20 @@ try {
     await screenshot(page, name + "-demo-direction");
     await openInfo(page);
     const sliders = page.getByRole("slider");
+    const initialHeading = Number(await sliders.nth(0).inputValue());
     await sliders.nth(0).focus();
     await sliders.nth(0).press("ArrowRight");
-    assert.equal(await sliders.nth(0).inputValue(), "21", "Demo heading remains keyboard controllable");
+    assert.equal(Number(await sliders.nth(0).inputValue()), initialHeading + 1, "Demo heading remains keyboard controllable");
     await sliders.nth(1).focus();
     await sliders.nth(1).press("Home");
     await closeInfo(page);
     // Nearby must not activate on a single small GPS reading.
     assert.equal(await page.locator('.guidance[data-phase="nearby"]').count(), 0);
     await phase(page, "nearby");
-    await page.getByText("Approximate location", { exact: true }).waitFor();
+    assert.equal(await page.getByText("Approximate location", { exact: true }).count(), 1,
+      "Nearby retains an accessible estimate marker");
+    assert.match(await page.locator(".distance").innerText(), /~\s*5 m/);
+    assert.equal(await page.locator(".direction-status").innerText(), "nearby");
     await page.locator(".location-dot.nearby").waitFor();
     assert.equal(await page.locator(".direction-arrow").count(), 0);
     await palette(page, "green");
