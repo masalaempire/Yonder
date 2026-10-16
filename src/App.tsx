@@ -25,6 +25,8 @@ function Live({ client, onExit }: { client: SessionClient; onExit: () => void })
   const state = useSyncExternalStore(client.subscribe, client.getSnapshot); const [visible, setVisible] = useState(document.visibilityState !== 'hidden'); const [foregroundAt, setForegroundAt] = useState(0);
   useEffect(() => { const handle = () => { const shown = document.visibilityState !== 'hidden'; setVisible(shown); client.clearPeer(); if (shown) setForegroundAt(Date.now()); }; document.addEventListener('visibilitychange', handle); return () => document.removeEventListener('visibilitychange', handle); }, [client]);
   useEffect(() => { const generation = ++lifecycle.current; client.setSensorStop(() => sensorsRef.current.stop()); return () => { sensorsRef.current.stop(); queueMicrotask(() => { if (lifecycle.current === generation) client.stop(); }); }; }, [client]);
+  useEffect(() => { if (state.session && !state.session.selfConsent) sensorsRef.current.stop(); }, [state.session?.selfConsent]);
+  useEffect(() => { const endOnExit = () => { sensorsRef.current.stop(); client.stop(); }; window.addEventListener('pagehide', endOnExit); return () => window.removeEventListener('pagehide', endOnExit); }, [client]);
   useEffect(() => { if (sensors.locationStatus === 'denied' && state.session?.selfConsent) client.stop(); }, [client, sensors.locationStatus, state.session?.selfConsent]);
   useEffect(() => { if (visible && sensors.location && sensors.location.timestamp >= foregroundAt) client.sendFix(sensors.location); }, [client, sensors.location, state.session, state.connection, visible, foregroundAt]);
   const end = (found = false) => { sensors.stop(); client.stop(found ? 'found' : 'stopped'); };

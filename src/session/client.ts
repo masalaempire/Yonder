@@ -14,7 +14,7 @@ function validState(v: unknown, id: string): v is SessionSnapshot { if (!v || ty
 const unavailable = 'Live sessions need the Cloudflare connection. Try the demo.';
 export class SessionClient {
   private value = empty(); private listeners = new Set<() => void>(); private socket: WebSocket | null = null;
-  private retry: ReturnType<typeof setTimeout> | null = null; private clock: ReturnType<typeof setInterval> | null = null; private abort: AbortController | null = null;
+  private retry: ReturnType<typeof setTimeout> | null = null; private handshake: ReturnType<typeof setTimeout> | null = null; private clock: ReturnType<typeof setInterval> | null = null; private abort: AbortController | null = null;
   private generation = 0; private stopped = true; private authenticated = false; private connectedAt = Infinity; private lastSent = -Infinity; private lastFix = -Infinity; private lastPing = 0; private retries = 0;
   constructor(private stopSensors: () => void = () => {}, private request: typeof fetch = (...args) => fetch(...args), private makeSocket: (url: string) => WebSocket = url => new WebSocket(url)) {}
   setSensorStop(stop: () => void) { this.stopSensors = stop; }
@@ -39,6 +39,7 @@ export class SessionClient {
     this.authenticated = false; this.connectedAt = Infinity; this.patch({ connection: this.retries ? 'interrupted' : 'connecting', peer: null });
     const url = new URL('/api/sessions/' + encodeURIComponent(grant.sessionId) + '/socket', window.location.origin); url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
     let socket: WebSocket; try { socket = this.makeSocket(url.href); this.socket = socket; } catch { this.schedule(generation); return; }
+    this.handshake = setTimeout(() => { if (this.current(socket, generation) && !this.authenticated) socket.close(); }, 10000);
     socket.onopen = () => { if (!this.current(socket, generation)) return; socket.send(JSON.stringify({ type: 'authenticate', participantId: grant.participantId, token: grant.token })); };
     socket.onmessage = event => {
       if (!this.current(socket, generation) || typeof event.data !== 'string' || event.data.length > 8192) return;
@@ -47,14 +48,14 @@ export class SessionClient {
       if (message.type === 'state' && validState(message.state, grant.sessionId)) {
         const state = message.state;
         if (state.phase === 'ended' || state.expiresAt <= Date.now()) { this.stop(state.endReason === 'found' ? 'found' : state.expiresAt <= Date.now() ? 'expired' : 'stopped', false); return; }
-        if (!this.authenticated) { this.connectedAt = Date.now(); this.authenticated = true; this.retries = 0; }
+        if (!this.authenticated) { this.connectedAt = Date.now(); this.authenticated = true; this.retries = 0; if (this.handshake) clearTimeout(this.handshake); this.handshake = null; }
         this.patch({ connection: 'connected', session: state, grant: { ...grant, expiresAt: state.expiresAt }, peer: state.phase === 'sharing' && state.selfConsent && state.peerConsent && state.peerConnected ? this.value.peer : null, error: null });
-      } else if (message.type === 'peer-location' && this.canShare() && validFix(message.fix) && (!this.value.peer || message.fix.timestamp > this.value.peer.timestamp)) this.patch({ peer: message.fix });
+      } else if (message.type === 'peer-location' && this.canShare() && validFix(message.fix) && message.fix.timestamp > this.connectedAt && (!this.value.peer || message.fix.timestamp > this.value.peer.timestamp)) this.patch({ peer: message.fix });
       else if (message.type === 'ended' && ['stopped', 'found', 'expired'].includes(String(message.reason))) this.stop(message.reason as EndReason, false);
       else if (message.type === 'error') { this.stop('stopped', false); this.patch({ error: 'This session could not continue. Please start again.' }); }
     };
     socket.onerror = () => { if (this.current(socket, generation)) socket.close(); };
-    socket.onclose = () => { if (!this.current(socket, generation)) return; this.socket = null; this.authenticated = false; this.connectedAt = Infinity; this.patch({ connection: 'interrupted', peer: null }); this.schedule(generation); };
+    socket.onclose = () => { if (!this.current(socket, generation)) return; this.socket = null; if (this.handshake) clearTimeout(this.handshake); this.handshake = null; this.authenticated = false; this.connectedAt = Infinity; this.patch({ connection: 'interrupted', peer: null }); this.schedule(generation); };
   }
   private current(socket: WebSocket, generation: number) { return !this.stopped && generation === this.generation && socket === this.socket; }
   private schedule(generation: number) { if (this.stopped || generation !== this.generation) return; this.patch({ connection: 'interrupted', peer: null }); const delay = Math.min(30000, 1000 * 2 ** Math.min(this.retries++, 5)); this.retry = setTimeout(() => { this.retry = null; this.connect(generation); }, delay); }
@@ -65,7 +66,7 @@ export class SessionClient {
   clearPeer() { this.patch({ peer: null }); }
   stop(reason: EndReason = 'stopped', notify = true) {
     const grant = this.value.grant; const socket = this.socket; this.stopped = true; ++this.generation; this.stopSensors(); this.abort?.abort(); this.abort = null;
-    if (this.retry) clearTimeout(this.retry); if (this.clock) clearInterval(this.clock); this.retry = null; this.clock = null; this.socket = null; this.authenticated = false; this.connectedAt = Infinity; this.lastSent = -Infinity; this.lastFix = -Infinity; this.retries = 0;
+    if (this.retry) clearTimeout(this.retry); if (this.handshake) clearTimeout(this.handshake); this.handshake = null; if (this.clock) clearInterval(this.clock); this.retry = null; this.clock = null; this.socket = null; this.authenticated = false; this.connectedAt = Infinity; this.lastSent = -Infinity; this.lastFix = -Infinity; this.retries = 0;
     if (socket) { socket.onopen = socket.onmessage = socket.onerror = socket.onclose = null; try { if (notify && socket.readyState === 1) socket.send(JSON.stringify({ type: 'end', reason: reason === 'found' ? 'found' : 'stopped' })); socket.close(); } catch { /* Local cleanup has already completed. */ } }
     this.patch({ ...empty(), connection: 'ended', reason });
     if (notify && grant) void this.request('/api/sessions/' + encodeURIComponent(grant.sessionId) + '/end', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + grant.token }, body: JSON.stringify({ reason: reason === 'found' ? 'found' : 'stopped' }), keepalive: true, cache: 'no-store' }).catch(() => {});
