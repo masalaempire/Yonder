@@ -40,6 +40,18 @@ jobs:
       - run: npm run typecheck:worker
       - run: npm test
       - run: npm run build
+      - name: Install Firefox for remote UI checks
+        run: npx playwright install --with-deps firefox
+      - name: Check UI in Firefox
+        run: |
+          npm run preview -- --host 127.0.0.1 --port 4173 > /tmp/yonder-preview.log 2>&1 &
+          preview_pid=$!
+          trap 'kill "$preview_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:4173/ > /dev/null; then break; fi
+            sleep 1
+          done
+          npm run smoke:browser
       - run: npm run worker:check
       - name: Print dependency failure diagnostics
         if: failure() && steps.install.conclusion == 'failure'
@@ -60,4 +72,5 @@ jobs:
           path: |
             dist/
             package-lock.json
+            test-results/
           if-no-files-found: ignore
