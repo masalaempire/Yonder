@@ -15,6 +15,15 @@ async function visibleInViewport(page, locator) {
     "Stop sharing must stay entirely in the viewport",
   );
 }
+async function aboveFooter(page, locator) {
+  await page.evaluate(() => window.scrollTo(0, 0));
+  const box = await locator.boundingBox();
+  const footer = await page.locator(".is-finding .session-footer").boundingBox();
+  assert(
+    box && footer && box.y >= 0 && box.y + box.height <= footer.y - 2,
+    "Guidance status and needed sensor controls must be visible above the footer",
+  );
+}
 async function noOverflow(page) {
   assert(
     await page.evaluate(
@@ -41,9 +50,11 @@ try {
     });
     await page.goto(base);
     await noOverflow(page);
+    await visibleInViewport(page, page.getByRole("button", { name: /Create session/ }));
+    await visibleInViewport(page, page.getByRole("button", { name: "Join session" }));
     await page.screenshot({
       path: output + "/" + name + "-home.png",
-      fullPage: true,
+      fullPage: false,
     });
     assert.equal(apiCalls.length, 0, "Home must not start a live session");
     await page.getByRole("button", { name: "Try a demo" }).click();
@@ -51,10 +62,12 @@ try {
     await page.getByText("Head this way").waitFor();
     const stop = page.getByRole("button", { name: "Stop sharing" });
     await visibleInViewport(page, stop);
+    await aboveFooter(page, page.locator(".direction-status"));
+    await aboveFooter(page, page.locator(".distance"));
     await noOverflow(page);
     await page.screenshot({
       path: output + "/" + name + "-demo.png",
-      fullPage: true,
+      fullPage: false,
     });
     const sliders = page.getByRole("slider");
     await sliders.nth(0).focus();
@@ -73,6 +86,7 @@ try {
     await page.getByText("Head this way", { exact: true }).waitFor();
     await page.getByLabel("Poor accuracy", { exact: true }).check();
     await page.getByText("Location accuracy is low").waitFor();
+    await aboveFooter(page, page.locator(".direction-status"));
     await visibleInViewport(page, stop);
     await page.getByLabel("Poor accuracy", { exact: true }).uncheck();
     await page.getByLabel("Connection lost", { exact: true }).check();
@@ -139,17 +153,20 @@ try {
       page,
       page.getByRole("button", { name: "Stop sharing" }),
     );
+    await aboveFooter(page, page.getByText("Enable location to begin", { exact: true }));
+    await aboveFooter(page, page.getByRole("button", { name: "Enable location", exact: true }));
+    await aboveFooter(page, page.getByRole("button", { name: "Enable compass", exact: true }));
     await noOverflow(page);
     await page.screenshot({
       path: output + "/" + name + "-live-finding.png",
-      fullPage: true,
+      fullPage: false,
     });
     await page.getByRole("button", { name: "Stop sharing" }).click();
     await page.getByText("Until next time.").waitFor();
     console.log(
       "PASS " +
         name +
-        ": home/demo isolation, controls, live consent flow, persistent stop and no horizontal overflow",
+        ": home/demo isolation, controls, live consent flow, unobscured guidance/permissions, persistent stop and no horizontal overflow",
     );
     await context.close();
   }

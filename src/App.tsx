@@ -240,6 +240,7 @@ function Live({
     sensors.heading && sensors.heading.timestamp >= foregroundAt
       ? sensors.heading
       : null;
+  const needsSensors = !local || !heading;
   return (
     <div className={"live-session " + (sharing ? "is-finding" : "")}>
       <div className="session-top">
@@ -309,7 +310,8 @@ function Live({
           </p>
         </section>
       ) : (
-        <>
+        <div className={"finding-content " + (needsSensors ? "needs-sensors" : "")}>
+          {needsSensors && <SensorButtons sensors={sensors} />}
           {!session.peerConsent ? (
             <section className="intro compact">
               <h1>
@@ -337,14 +339,19 @@ function Live({
               }
             />
           )}
-          <SensorButtons sensors={sensors} />
+          {!needsSensors && (
+            <details className="sensor-diagnostics">
+              <summary>Sensor controls</summary>
+              <SensorButtons sensors={sensors} />
+            </details>
+          )}
           {sharing && (
             <p className="fine-print limitation">
               Straight-line guidance, not a walking route. Stay in the
               foreground and look around safely.
             </p>
           )}
-        </>
+        </div>
       )}
       <footer className="session-footer">
         {sharing && (
@@ -356,8 +363,7 @@ function Live({
           Stop sharing
         </button>
         <p>
-          Stops sensors immediately. Your friend’s last fix becomes stale within
-          15 seconds if you’re offline.
+          Sensors stop now. Offline peer readings expire within 15 seconds.
         </p>
       </footer>
     </div>
