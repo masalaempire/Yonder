@@ -24,6 +24,8 @@ Vite alone previews the frontend. Real pairing needs the same-origin Worker API.
 - [API and privacy boundaries](docs/API.md): temporary sessions, credentials, consent, validation, and expiry.
 - [Device testing](docs/DEVICE_TESTING.md): physical acceptance checklist and honest evidence categories.
 
+Before creating or joining a session, enable location and compass with their separate buttons. The session begins only after an explicit Create/Join tap; pairing still requires a separate sharing consent. If the requested compass is unavailable, choose Continue without compass for approximate distance only. Finding controls and sensor information are available through Information. The simulated demo uses no sensors or session API.
+
 ## Privacy and limitations
 
 Invitation links carry an eight-character code in the hash only. Participant secrets stay out of URLs; keep them in memory. Coordinates travel over HTTPS/WSS through Cloudflare only after mutual consent. The service can read them: **this is not end-to-end encrypted**. Coordinates and compass data are not written to Durable Object storage, socket attachments, logs, analytics, or browser history by this application. The server only relays fresh fixes; compass calculation stays local.
