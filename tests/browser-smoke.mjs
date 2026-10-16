@@ -192,7 +192,7 @@ try {
     await phase(page, "direction");
     await palette(page, "green");
     await findingFits(page, "Stop demo");
-    assert.equal(await page.getByRole("slider").isVisible().catch(() => false), false,
+    for (const slider of await page.getByRole("slider").all()) assert.equal(await slider.isVisible(), false,
       "Demo simulation controls are hidden by default");
     await screenshot(page, name + "-demo-direction");
     await openInfo(page);
@@ -305,7 +305,10 @@ try {
     const fallbackTraffic = await mockSession(fallbackPage);
     await fallbackPage.goto(base);
     await setSensors(fallbackPage, { compassMode: "denied" });
-    await enterSetup(fallbackPage);
+    await fallbackPage.getByRole("button", { name: "Join session", exact: true }).click();
+    await fallbackPage.getByLabel("Invite code", { exact: true }).fill("ABCD2345");
+    untouched(fallbackTraffic);
+    await enterSetup(fallbackPage, "Join session");
     await fallbackPage.getByRole("button", { name: "Enable compass", exact: true }).click();
     const withoutCompass = fallbackPage.getByRole("button", { name: "Continue without compass", exact: true });
     await withoutCompass.waitFor();
@@ -315,10 +318,10 @@ try {
     await fallbackPage.getByRole("button", { name: "Enable location", exact: true }).click();
     await fallbackPage.waitForFunction(() => !Array.from(document.querySelectorAll("button")).find(button =>
       button.textContent === "Continue without compass")?.disabled);
-    assert(await fallbackPage.getByRole("button", { name: "Create session", exact: true }).isDisabled());
+    assert(await fallbackPage.getByRole("button", { name: "Join session", exact: true }).isDisabled());
     await withoutCompass.click();
     untouched(fallbackTraffic);
-    await fallbackPage.getByRole("button", { name: "Create session", exact: true }).click();
+    await fallbackPage.getByRole("button", { name: "Join session", exact: true }).click();
     await fallbackPage.getByRole("button", { name: "Share my location", exact: true }).waitFor();
     assert.equal(fallbackTraffic.messages.filter(message => message.type === "location").length, 0);
     await fallbackPage.getByRole("button", { name: "Share my location", exact: true }).click();
