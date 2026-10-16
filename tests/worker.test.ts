@@ -76,6 +76,11 @@ describe('Worker routing and request boundaries (runtime mocks)', () => {
   it('bounds request payload and uses the native limiter', async () => {
     const { env } = environment();
     expect((await worker.fetch(api('/api/sessions/join','POST',JSON.stringify({code:'A'.repeat(3000)})),env)).status).toBe(413);
+    const malformed = new Request('https://yonder.test/api/sessions/join', {
+      method: 'POST', headers: { Origin: 'https://yonder.test', 'Content-Type': 'application/json' },
+      body: new Uint8Array([123,34,99,111,100,101,34,58,34,195,40,34,125]),
+    });
+    expect((await worker.fetch(malformed,env)).status).toBe(400);
     vi.mocked(env.PAIRING_LIMITER.limit).mockResolvedValue({success:false});
     expect((await worker.fetch(api('/api/sessions'),env)).status).toBe(429);
   });

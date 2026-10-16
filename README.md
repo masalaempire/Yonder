@@ -8,10 +8,10 @@ Frontend and Cloudflare Worker/Durable Object source are provided on this branch
 
 ## Run and check
 
-Use Node.js 22 or newer. After cloning the repository yourself:
+Use Node.js **22.23.3** (minimum 22.12) and the pinned npm **11.6.2** install command. After cloning the repository yourself:
 
 ```sh
-npm install
+npx --yes npm@11.6.2 ci
 npm run dev
 npm test
 npm run build

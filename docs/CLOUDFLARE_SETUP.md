@@ -10,20 +10,20 @@ No Cloudflare account changes or deployment were performed. You choose when to c
 
 1. In your Cloudflare dashboard open Workers & Pages, choose creation/import of an existing Git repository, connect your GitHub account, and choose `masalaempire/Yonder`.
 2. Select the reviewed branch you intend to deploy. Work here is on `codex/yonder-frontend`; avoid silently pointing production at an unrelated default branch. Keep previews/automatic production publishing disabled until you want them.
-3. Use the repository root (no subdirectory). Use Node 22+ and the repository's package manager. Cloudflare installs dependencies before the build.
-4. Build command: `npm run build`. Deploy command: `npx wrangler deploy`. This reads `wrangler.jsonc`, bundles `worker/index.ts`, and uploads `dist`. Do not use a frontend-only output-directory deployment for live pairing.
+3. Use the repository root (no subdirectory). Set Build variables `NODE_VERSION=22.23.3` and `SKIP_DEPENDENCY_INSTALL=1`. This skips the image's automatic npm install so the pinned install runs in the build command.
+4. Build command: `npx --yes npm@11.6.2 ci && npm run build`. Deploy command: `npx wrangler deploy`. This reads `wrangler.jsonc`, bundles `worker/index.ts`, and uploads `dist`. Do not use a frontend-only output-directory deployment for live pairing.
 5. Review the configured Worker name `yonder`, your selected account, availability/cost of SQLite Durable Objects and native rate-limit bindings, and the unused numeric rate-limit namespace before deploying. Change the Worker name if it collides in your account.
 6. On first deployment Wrangler applies migration `v1` with `new_sqlite_classes: ["Session"]`, creating the `SESSIONS` binding. Keep migration history; do not delete or retag applied migrations. Choose one unused account-wide numeric namespace for `PAIRING_LIMITER`.
 7. Confirm `/api/health` reports `yonder-pairing`, test real pairing using two physical phones, then configure a custom domain if desired. The standard Workers HTTPS hostname is sufficient to begin. Do not enter any Cloudflare account/API token in frontend variables or browser code.
 
-Cloudflare's dashboard labels may vary. [Workers Builds configuration](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/) documents separate build/deploy commands and selecting the Git branch. Builds use the Wrangler dependency in package.json.
+Cloudflare's dashboard labels may vary. [Workers Builds configuration](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/) documents separate build/deploy commands and selecting the Git branch. Builds use the Wrangler dependency in package.json. [Workers build image](https://developers.cloudflare.com/workers/ci-cd/builds/build-image/) documents `NODE_VERSION` and `SKIP_DEPENDENCY_INSTALL`; its currently listed npm is 10.9.2 and no npm-version override variable is documented. The explicit npm 11.6.2 command and committed lockfile avoid relying on the image's npm version. A packageManager field alone does not select the bundled npm executable.
 
 ## Optional CLI route on your computer
 
 These are commands for you to choose to run; they were not executed locally as part of this work.
 
 ```sh
-npm install
+npx --yes npm@11.6.2 ci
 npm test
 npm run typecheck:worker
 npm run build
@@ -38,7 +38,7 @@ npx wrangler login
 npx wrangler deploy
 ```
 
-Wrangler must be modern 4.x, at least 4.36.0 for native rate-limit bindings. The config compatibility date is `2026-10-01`. Serving local phone tests needs a secure context: plain HTTP on a LAN hostname is insufficient for sensors. Choose an HTTPS development setup yourself; do not expose credentials.
+Use Node 22.23.3 (minimum 22.12). The repository pins npm 11.6.2 and Wrangler 4.151.0. Native rate-limit bindings require Wrangler at least 4.36.0; the current pin also supports the configured 2026 compatibility date. The config compatibility date is `2026-10-01`. Serving local phone tests needs a secure context: plain HTTP on a LAN hostname is insufficient for sensors. Choose an HTTPS development setup yourself; do not expose credentials.
 
 ## Configuration
 
