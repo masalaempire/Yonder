@@ -18,6 +18,17 @@
     "simple": { "limit": 30, "period": 60 }
   }],
   "vars": { "INVITE_TTL_SECONDS": "600", "SHARING_TTL_SECONDS": "3600" },
+  "previews": {
+    "vars": { "INVITE_TTL_SECONDS": "600", "SHARING_TTL_SECONDS": "3600" },
+    // Preview sessions get their own Durable Object namespace and storage.
+    "durable_objects": { "bindings": [{ "name": "SESSIONS", "class_name": "Session" }] },
+    "ratelimits": [{
+      "name": "PAIRING_LIMITER",
+      // Keep preview traffic separate from the production rate limiter.
+      "namespace_id": "10014002",
+      "simple": { "limit": 30, "period": 60 }
+    }]
+  },
   "observability": { "enabled": false },
   "upload_source_maps": false
   // Platform operational/request metadata can still exist. See docs/CLOUDFLARE_SETUP.md.
