@@ -3,14 +3,14 @@ export type Connection = 'idle' | 'connecting' | 'connected' | 'interrupted' | '
 export interface ClientState { grant: SessionGrant | null; session: SessionSnapshot | null; peer: LocationFix | null; connection: Connection; error: string | null; reason: EndReason | null }
 const empty = (): ClientState => ({ grant: null, session: null, peer: null, connection: 'idle', error: null, reason: null });
 export const normalizeCode = (value: string) => value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
-export function invitationCode(hash: string): string { const raw = new URLSearchParams(hash.replace(/^#/, '')).get('join') ?? ''; const code = normalizeCode(raw); return code.length === 8 ? code : ''; }
+export function invitationCode(hash: string): string { const raw = new URLSearchParams(hash.replace(/^#/, '')).get('join') ?? ''; const code = normalizeCode(raw); return /^[A-HJ-NP-Z2-9]{8}$/.test(code) ? code : ''; }
 export function validFix(value: unknown, now = Date.now()): value is LocationFix {
   if (!value || typeof value !== 'object') return false;
   const f = value as LocationFix;
   return [f.latitude, f.longitude, f.accuracy, f.timestamp].every(Number.isFinite) && Math.abs(f.latitude) <= 90 && Math.abs(f.longitude) <= 180 && f.accuracy >= 0 && f.accuracy <= 100000 && f.timestamp <= now + 2000 && now - f.timestamp <= 15000;
 }
-function validGrant(v: unknown): v is SessionGrant { if (!v || typeof v !== 'object') return false; const g = v as SessionGrant; return ['sessionId', 'participantId', 'token', 'code'].every(k => typeof g[k as keyof SessionGrant] === 'string') && /^[A-Z0-9]{8}$/.test(g.code) && Number.isFinite(g.expiresAt) && g.expiresAt > Date.now(); }
-function validState(v: unknown, id: string): v is SessionSnapshot { if (!v || typeof v !== 'object') return false; const s = v as SessionSnapshot; return s.sessionId === id && /^[A-Z0-9]{8}$/.test(s.code) && ['waiting', 'consent', 'sharing', 'ended'].includes(s.phase) && Number.isFinite(s.expiresAt) && Number.isInteger(s.participants) && s.participants >= 0 && s.participants <= 2 && ['selfConsent', 'peerConsent', 'peerConnected'].every(k => typeof s[k as keyof SessionSnapshot] === 'boolean'); }
+function validGrant(v: unknown): v is SessionGrant { if (!v || typeof v !== 'object') return false; const g = v as SessionGrant; return ['sessionId', 'participantId', 'token', 'code'].every(k => typeof g[k as keyof SessionGrant] === 'string') && /^[A-HJ-NP-Z2-9]{8}$/.test(g.code) && Number.isFinite(g.expiresAt) && g.expiresAt > Date.now(); }
+function validState(v: unknown, id: string): v is SessionSnapshot { if (!v || typeof v !== 'object') return false; const s = v as SessionSnapshot; return s.sessionId === id && /^[A-HJ-NP-Z2-9]{8}$/.test(s.code) && ['waiting', 'consent', 'sharing', 'ended'].includes(s.phase) && Number.isFinite(s.expiresAt) && Number.isInteger(s.participants) && s.participants >= 0 && s.participants <= 2 && ['selfConsent', 'peerConsent', 'peerConnected'].every(k => typeof s[k as keyof SessionSnapshot] === 'boolean'); }
 const unavailable = 'Live sessions need the Cloudflare connection. Try the demo.';
 export class SessionClient {
   private value = empty(); private listeners = new Set<() => void>(); private socket: WebSocket | null = null;
@@ -55,7 +55,7 @@ export class SessionClient {
       else if (message.type === 'error') { this.stop('stopped', false); this.patch({ error: 'This session could not continue. Please start again.' }); }
     };
     socket.onerror = () => { if (this.current(socket, generation)) socket.close(); };
-    socket.onclose = () => { if (!this.current(socket, generation)) return; this.socket = null; if (this.handshake) clearTimeout(this.handshake); this.handshake = null; this.authenticated = false; this.connectedAt = Infinity; this.patch({ connection: 'interrupted', peer: null }); this.schedule(generation); };
+    socket.onclose = () => { if (!this.current(socket, generation)) return; this.socket = null; this.stopSensors(); if (this.handshake) clearTimeout(this.handshake); this.handshake = null; this.authenticated = false; this.connectedAt = Infinity; this.patch({ connection: 'interrupted', peer: null }); this.schedule(generation); };
   }
   private current(socket: WebSocket, generation: number) { return !this.stopped && generation === this.generation && socket === this.socket; }
   private schedule(generation: number) { if (this.stopped || generation !== this.generation) return; this.patch({ connection: 'interrupted', peer: null }); const delay = Math.min(30000, 1000 * 2 ** Math.min(this.retries++, 5)); this.retry = setTimeout(() => { this.retry = null; this.connect(generation); }, delay); }

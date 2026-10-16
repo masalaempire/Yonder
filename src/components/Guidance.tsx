@@ -16,12 +16,14 @@ export function Guidance({ local, peer, heading, connected, visible, message }: 
   const quality = guidanceQuality(local, peer, heading, now, connected, visible);
   useEffect(() => { setNearby(previous => updateProximity(previous, quality.distance, local?.accuracy ?? Infinity, peer?.accuracy ?? Infinity, now, quality.fresh && quality.accurate)); }, [quality.distance, quality.fresh, quality.accurate, local?.accuracy, peer?.accuracy, now]);
   if (quality.arrow && heading) { const target = relativeBearing(quality.bearing, heading.degrees); rotation.current += shortestAngleDelta(rotation.current, target); }
-  const showArrow = quality.arrow && !nearby.nearby;
+  const showNearby = nearby.nearby && quality.fresh && quality.accurate;
+  const showArrow = quality.arrow && !showNearby;
+  const age = local && peer ? Math.max(0, Math.floor((now - Math.min(local.timestamp, peer.timestamp)) / 1000)) : 0;
   let status = message || 'Waiting for fresh locations';
   if (!visible) status = 'Return to Yonder to continue';
   else if (!connected) status = 'Connection interrupted';
   else if (quality.fresh && !quality.accurate) status = 'Location accuracy is low';
-  else if (quality.fresh && nearby.nearby) status = 'You may be nearby';
+  else if (showNearby) status = 'You may be nearby';
   else if (quality.fresh && !quality.compass) status = 'Compass direction unavailable';
   else if (quality.fresh && !quality.arrow) status = 'Too close for a reliable direction';
   else if (showArrow) status = 'Head this way';
@@ -29,10 +31,10 @@ export function Guidance({ local, peer, heading, connected, visible, message }: 
   return <section className="guidance" aria-label="Direction to your friend">
     <div className={'direction-disc ' + (showArrow ? 'available' : '')} aria-hidden="true">
       <span className="axis axis-h"/><span className="axis axis-v"/>
-      {showArrow ? <svg className="direction-arrow" viewBox="0 0 180 210" style={{ transform: 'rotate(' + rotation.current + 'deg)' }}><path d="M90 8C95 8 98 12 101 18L170 158C175 169 168 178 158 174L108 153V198C108 204 103 208 97 208H83C77 208 72 204 72 198V153L22 174C12 178 5 169 10 158L79 18C82 12 85 8 90 8Z"/></svg> : <span className={'location-dot ' + (nearby.nearby ? 'nearby' : '')}/>}
+      {showArrow ? <svg className="direction-arrow" viewBox="0 0 180 210" style={{ transform: 'rotate(' + rotation.current + 'deg)' }}><path d="M90 8C95 8 98 12 101 18L170 158C175 169 168 178 158 174L108 153V198C108 204 103 208 97 208H83C77 208 72 204 72 198V153L22 174C12 178 5 169 10 158L79 18C82 12 85 8 90 8Z"/></svg> : <span className={'location-dot ' + (showNearby ? 'nearby' : '')}/>}
     </div>
     <p className="eyebrow">STRAIGHT-LINE DISTANCE</p><div className="distance">{quality.fresh ? <><span className="approx">~</span>{distance}</> : '—'}</div>
     <h2 className="direction-status" aria-live="polite">{status}</h2>
-    <p className="quality">{quality.fresh && local && peer ? 'Accuracy about ±' + Math.round(local.accuracy + peer.accuracy) + ' m · updated just now' : 'Direction appears only with fresh, accurate readings.'}</p>
+    <p className="quality">{quality.fresh && local && peer ? 'Accuracy about ±' + Math.round(local.accuracy + peer.accuracy) + ' m · updated ' + (age === 0 ? 'just now' : age + 's ago') : 'Direction appears only with fresh, accurate readings.'}</p>
   </section>;
 }
