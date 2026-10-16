@@ -1,0 +1,39 @@
+{
+  "name": "yonder",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "typecheck": "tsc -p tsconfig.app.json",
+    "typecheck:worker": "tsc -p tsconfig.worker.json",
+    "test": "vitest run",
+    "worker:dev": "wrangler dev",
+    "worker:check": "wrangler deploy --dry-run"
+  },
+  "dependencies": {
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "qrcode": "1.5.4",
+    "geomagnetism": "0.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.2.3",
+    "@types/qrcode": "1.5.6",
+    "@types/node": "22.19.11",
+    "@testing-library/react": "16.3.2",
+    "@testing-library/dom": "10.4.1",
+    "typescript": "5.9.3",
+    "vite": "8.3.4",
+    "vitest": "5.0.4",
+    "jsdom": "27.4.0",
+    "wrangler": "4.45.0",
+    "@cloudflare/workers-types": "4.20251014.0"
+  }
+}

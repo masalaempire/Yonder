@@ -1,0 +1,31 @@
+name: Checks
+on:
+  push:
+    branches: [main, codex/yonder-frontend]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm run typecheck:worker
+      - run: npm test
+      - run: npm run build
+      - run: npm run worker:check
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reviewed-build-and-lock
+          path: |
+            dist/
+            package-lock.json
+          if-no-files-found: ignore
