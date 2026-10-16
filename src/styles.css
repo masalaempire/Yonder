@@ -114,9 +114,9 @@ h2 { font-size: 23px; letter-spacing: -.025em; font-weight: 500; }
 .location-dot.nearby { position: relative; z-index: 0; display: block; width: min(42vw, 210px); height: min(42vw, 210px); max-height: 82%; aspect-ratio: 1; background: #fff; border-radius: 50%; }
 .location-dot.nearby::before, .location-dot.nearby::after { content: ""; position: absolute; inset: -22%; border-radius: inherit; background: #ffffff2b; animation: nearby-pulse 3.4s ease-out infinite; z-index: -1; }
 .location-dot.nearby::after { animation-delay: 1.7s; }
-.signal-field { position: relative; width: min(56vw, 250px); aspect-ratio: 1; border-radius: 50%; background-image: radial-gradient(circle at 15% 35%, #ffffff9c 0 1px, transparent 1.6px), radial-gradient(circle at 78% 20%, #ffffff89 0 1px, transparent 1.5px), radial-gradient(circle at 65% 80%, #ffffff70 0 1px, transparent 1.5px), radial-gradient(circle at 20% 75%, #ffffff60 0 1px, transparent 1.4px); background-size: 31px 37px, 43px 39px, 47px 53px, 39px 49px; mask-image: radial-gradient(circle, transparent 28%, #000 46%, transparent 71%); animation: signal-breathe 4s ease-in-out infinite; }
-.signal-ring { position: absolute; inset: 16%; border: 1px solid #ffffff50; border-radius: 50%; box-shadow: 0 0 18px #ffffff12, inset 0 0 16px #ffffff12; }
-.signal-orbit { position: absolute; inset: 8%; border: 1px dotted #ffffff24; border-radius: 50%; }
+.signal-field { position: relative; width: min(56vw, 250px); aspect-ratio: 1; border-radius: 50%; background-image: radial-gradient(circle at 15% 35%, #ffffffd9 0 1.15px, transparent 1.8px), radial-gradient(circle at 78% 20%, #ffffffc2 0 1px, transparent 1.7px), radial-gradient(circle at 65% 80%, #ffffffb8 0 1.1px, transparent 1.7px), radial-gradient(circle at 20% 75%, #ffffffb3 0 1px, transparent 1.6px); background-size: 24px 29px, 31px 27px, 37px 41px, 29px 37px; mask-image: radial-gradient(circle, transparent 27%, #000 42%, #000 50%, transparent 72%); animation: signal-breathe 4s ease-in-out infinite; }
+.signal-ring { position: absolute; inset: 16%; border: 1px solid #ffffff20; border-radius: 50%; box-shadow: 0 0 18px #ffffff12, inset 0 0 16px #ffffff12; }
+.signal-orbit { position: absolute; inset: 8%; border: 1px dotted #ffffff36; border-radius: 50%; }
 .finding-controls { position: absolute; z-index: 4; bottom: calc(28px + env(safe-area-inset-bottom)); left: max(28px, env(safe-area-inset-left)); right: max(28px, env(safe-area-inset-right)); display: flex; align-items: center; justify-content: space-between; }
 .round-control { display: grid; place-items: center; width: 54px; height: 54px; min-height: 54px; border-radius: 50%; background: #0003; padding: 15px; color: #fff; }
 .round-control:hover { background: #0005; }
@@ -138,7 +138,7 @@ h2 { font-size: 23px; letter-spacing: -.025em; font-weight: 500; }
 .visually-hidden { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 @keyframes target-breathe { 50% { transform: scale(1.18); opacity: .65; } }
 @keyframes nearby-pulse { 0% { transform: scale(.8); opacity: .75; } 100% { transform: scale(1.45); opacity: 0; } }
-@keyframes signal-breathe { 50% { opacity: .5; transform: scale(1.035); } }
+@keyframes signal-breathe { 50% { opacity: .78; transform: scale(1.035); } }
 @media (min-width: 700px) {
   .finding-heading { top: calc(40px + env(safe-area-inset-top)); left: 48px; }
   .demo-marker { top: 42px; right: 48px; }
@@ -178,3 +178,6 @@ h2 { font-size: 23px; letter-spacing: -.025em; font-weight: 500; }
 .permission-row > button { grid-column: 2; grid-row: 1 / 3; min-height: 44px; padding: 10px 14px; font-size: 12px; }
 .permission-setup .setup-actions { margin-top: 20px; }
 .permission-setup .setup-actions .setup-note { margin: 0; }
+
+.finding-frame:has(.guidance[data-phase="weak"]) .round-control { background: #252525; }
+.finding-frame:has(.guidance[data-phase="weak"]) .round-control:hover { background: #333; }
