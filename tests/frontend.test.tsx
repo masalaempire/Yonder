@@ -72,6 +72,19 @@ it("home and invitation entry request neither session nor sensors", () => {
   expect(screen.getByRole("heading", { name: "Before you begin" })).toBeTruthy();
   expect(fetch).not.toHaveBeenCalled();
 });
+it("joins only from the explicit final setup button and preserves the normalized invite", () => {
+  const fetch = pendingFetch(); vi.stubGlobal("fetch", fetch);
+  window.history.replaceState(null, "", "/#join=abcd-2345");
+  render(<App />);
+  fireEvent.click(screen.getByRole("button", { name: "Join session", exact: true }));
+  allow();
+  expect(fetch).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Join session", exact: true }));
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(fetch.mock.calls[0][0]).toBe("/api/sessions/join");
+  expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({ code: "ABCD2345" });
+});
+
 it("requires direct permission actions and an explicit final tap with fresh location and true compass", async () => {
   const fetch = pendingFetch(); vi.stubGlobal("fetch", fetch);
   render(<App />); setup();
