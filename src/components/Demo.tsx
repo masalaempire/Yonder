@@ -36,11 +36,11 @@ export default function Demo({ onExit }: { onExit: () => void }) {
         <div className="demo-controls">
           <p>Simulated. No sensors or network are used.</p>
           <label htmlFor={controlId + "-heading"}>
-            Turn your phone <output>{heading}°</output>
+            Turn your phone <span className="demo-value" aria-hidden="true">{heading}°</span>
             <input id={controlId + "-heading"} type="range" min="0" max="359" value={heading} onChange={(e) => setHeading(Number(e.target.value))} />
           </label>
           <label htmlFor={controlId + "-distance"}>
-            Move closer / away <output>{distance} m</output>
+            Move closer / away <span className="demo-value" aria-hidden="true">{distance} m</span>
             <input id={controlId + "-distance"} type="range" min="5" max="200" value={distance} onChange={(e) => setDistance(Number(e.target.value))} />
           </label>
           <label className="check"><input type="checkbox" checked={poor} onChange={(e) => setPoor(e.target.checked)} />Poor accuracy</label>

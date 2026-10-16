@@ -130,7 +130,7 @@ h2 { font-size: 23px; letter-spacing: -.025em; font-weight: 500; }
 .finding-info .sensor-tools { margin: 16px 0; }
 .demo-controls > p { color: #aaa; font-size: 12px; margin: 16px 0; }
 .demo-controls label { display: block; font-size: 13px; margin-top: 14px; }
-.demo-controls output { float: right; color: #aaa; }
+.demo-controls .demo-value { float: right; color: #aaa; }
 .demo-controls input[type="range"] { display: block; width: 100%; accent-color: var(--green); min-height: 36px; margin-top: 4px; }
 .demo-controls .check { display: flex; align-items: center; gap: 10px; min-height: 36px; margin: 2px 0; }
 .demo-controls input[type="checkbox"] { accent-color: var(--green); width: 18px; height: 18px; }
