@@ -96,6 +96,11 @@ export function Guidance({
     local.accuracy + peer.accuracy <= 24 && quality.distance < 20;
   const showArrow = quality.arrow && !showNearby;
   const phase = showNearby ? "nearby" : showArrow ? "direction" : "weak";
+  useEffect(() => {
+    const theme = document.querySelector('meta[name="theme-color"]');
+    theme?.setAttribute("content", phase === "weak" ? "#080808" : "#00c45b");
+    return () => { theme?.setAttribute("content", "#080808"); };
+  }, [phase]);
   let status = message || "Weak signal";
   if (!visible) status = "Return to continue";
   else if (!connected) status = "Connection interrupted";
@@ -140,13 +145,10 @@ export function Guidance({
         )}
       </div>
       <div className="finding-readout">
-        {showNearby ? (
-          <p className="nearby-estimate">Approximate location</p>
-        ) : (
-          <div className="distance" aria-label={quality.fresh ? "Approximately " + distance : "Distance unavailable"}>
-            {quality.fresh ? <><span className="approx" aria-hidden="true">~</span><span>{distance}</span></> : "—"}
-          </div>
-        )}
+        <div className="distance" aria-label={quality.fresh ? "Approximately " + distance : "Distance unavailable"}>
+          {quality.fresh ? <><span className="approx" aria-hidden="true">~</span><span>{distance}</span></> : "—"}
+        </div>
+        {showNearby && <p className="nearby-estimate visually-hidden">Approximate location</p>}
         <h2 className="direction-status" aria-live="polite">{status}</h2>
         <p className="quality visually-hidden">
           {quality.fresh && local && peer

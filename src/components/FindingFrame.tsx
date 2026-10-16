@@ -31,7 +31,7 @@ export function FindingFrame({
         <p className="finding-label">FINDING</p>
         <h1>Your friend</h1>
       </header>
-      {demo && <span className="demo-marker">Demo</span>}
+      {demo && <span className="demo-marker">Demo · simulated</span>}
       {open && (
         <section
           id={panelId}

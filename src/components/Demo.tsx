@@ -20,7 +20,7 @@ export default function Demo({ onExit }: { onExit: () => void }) {
   const peer = { latitude: distance / 111195, longitude: 0, accuracy: poor ? 70 : 5, timestamp };
   if (ended) return (
     <section className="ending demo-ended">
-      <span className="demo-marker">Demo</span>
+      <span className="demo-marker">Demo · simulated</span>
       <h1>Demo ended.</h1>
       <p>The simulated session has ended.</p>
       <button className="primary" onClick={onExit}>Back to Yonder</button>
