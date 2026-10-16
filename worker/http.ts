@@ -41,7 +41,7 @@ export async function readJson(request: Request): Promise<Record<string, unknown
   } catch { throw new SessionFault('invalid_json', 'Expected a JSON object.'); }
 }
 export function requireReason(body: Record<string, unknown>): 'stopped' | 'found' {
-  if (body.reason !== 'stopped' && body.reason !== 'found') throw new SessionFault('invalid_reason', 'Invalid end reason.');
+  if (Object.keys(body).length !== 1 || (body.reason !== 'stopped' && body.reason !== 'found')) throw new SessionFault('invalid_reason', 'Invalid end reason.');
   return body.reason;
 }
 export function randomSecret(bytes = 32): string {

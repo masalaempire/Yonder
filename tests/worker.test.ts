@@ -97,7 +97,10 @@ describe('Worker routing and request boundaries (runtime mocks)', () => {
 
 describe('actual Durable Object handlers with in-memory platform doubles', () => {
   it('issues independent secrets and serializes simultaneous joins to two slots', async () => {
-    const {ctx,env} = await pair();
+    const ctx=context(); const {env}=environment(); const initial=new Session(ctx as unknown as DurableObjectState,env); await ctx.ready;
+    await initial.fetch(internal('/create',{code:'ABCDEFGH'}));
+    const simultaneous=await Promise.all([initial.fetch(internal('/join')),initial.fetch(internal('/join'))]);
+    expect(simultaneous.map(r=>r.status).sort()).toEqual([201,409]);
     const stored = ctx.backing.get('session') as {participants: Array<{tokenHash:string}>};
     expect(stored.participants).toHaveLength(2); expect(stored.participants[0].tokenHash).not.toBe(stored.participants[1].tokenHash);
     const hydrated = new Session(ctx as unknown as DurableObjectState,env); await ctx.ready;
@@ -142,6 +145,30 @@ describe('actual Durable Object handlers with in-memory platform doubles', () =>
     expect((await hydrated.fetch(internal('/join'))).status).toBe(410);
     expect((await hydrated.fetch(internal('/create',{code:'ABCDEFGH'}))).status).toBe(409);
   });
+  it('rejects forged attachment identity, expired authentication and oversized frames', async () => {
+    const {ctx,session,a}=await pair();
+    const forged=freshSocket(ctx); forged.serializeAttachment({connectionId:'forged',participantId:a.participantId,authDeadline:Date.now()+5000,windowAt:Date.now(),messages:0,strikes:0});
+    await message(session,forged,{type:'ping'}); expect(forged.readyState).toBe(3);
+    const late=freshSocket(ctx); vi.setSystemTime(Date.now()+5001);
+    await authenticate(session,late,a); expect(late.readyState).toBe(3);
+    const large=freshSocket(ctx); await session.webSocketMessage(large as unknown as WebSocket,'x'.repeat(2049));
+    expect(large.readyState).toBe(3);
+  });
+  it('keeps location ordering and rate guards through reconnect and reconstruction', async () => {
+    const {ctx,env,session,a,b}=await pair(); const wa=freshSocket(ctx),wb=freshSocket(ctx);
+    await authenticate(session,wa,a); await authenticate(session,wb,b);
+    await message(session,wa,{type:'consent',granted:true}); await message(session,wb,{type:'consent',granted:true});
+    const fix={latitude:1,longitude:2,accuracy:5,timestamp:Date.now()};
+    await message(session,wa,{type:'location',fix}); const received=wb.sent.filter(m=>m.type==='peer-location').length;
+    const hydrated=new Session(ctx as unknown as DurableObjectState,env); await ctx.ready;
+    const replacement=freshSocket(ctx); await authenticate(hydrated,replacement,a);
+    await message(hydrated,replacement,{type:'location',fix});
+    expect(wb.sent.filter(m=>m.type==='peer-location')).toHaveLength(received);
+    expect(replacement.sent.at(-1)).toMatchObject({type:'error',code:'invalid_fix'});
+    vi.setSystemTime(Date.now()+1000);
+    await message(hydrated,replacement,{type:'location',fix:{...fix,timestamp:Date.now()}});
+    expect(wb.sent.filter(m=>m.type==='peer-location')).toHaveLength(received+1);
+  });
   it('authenticated HTTP stop ends both sockets and clears hashes', async () => {
     const {ctx,session,a,b}=await pair(); const wa=freshSocket(ctx),wb=freshSocket(ctx);
     await authenticate(session,wa,a); await authenticate(session,wb,b);
@@ -150,6 +177,12 @@ describe('actual Durable Object handlers with in-memory platform doubles', () =>
     expect(wb.sent.some(m=>m.type==='ended'&&m.reason==='stopped')).toBe(true);
     const stored=ctx.backing.get('session') as {participants:unknown[];code:string};
     expect(stored.participants).toEqual([]); expect(stored.code).toBe('');
+    const count=wb.sent.filter(m=>m.type==='peer-location').length;
+    await message(session,wa,{type:'location',fix:{latitude:1,longitude:2,accuracy:5,timestamp:Date.now()}});
+    const replay=freshSocket(ctx); await authenticate(session,replay,a);
+    expect(replay.readyState).toBe(3);
+    expect(wb.sent.filter(m=>m.type==='peer-location')).toHaveLength(count);
+    expect((await session.fetch(internal('/join'))).status).toBe(410);
   });
   it('removes invitation directory metadata on expiry and uses a new opaque ID on reuse', async () => {
     const ctx=context(); const {env}=environment(); const session=new Session(ctx as unknown as DurableObjectState,env); await ctx.ready;

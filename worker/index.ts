@@ -27,17 +27,18 @@ function internal(path: string, body?: unknown, headers?: HeadersInit): Request 
   const values = new Headers(headers); values.set('Content-Type', 'application/json');
   return new Request('https://session.internal' + path, { method: 'POST', headers: values, body: JSON.stringify(body ?? {}) });
 }
-function secured(response: Response): Response {
+function secured(response: Response, asset = false): Response {
   if (response.status === 101) return response;
   const headers = new Headers(response.headers);
   for (const [key, value] of Object.entries(SECURITY_HEADERS)) headers.set(key, value);
+  if (asset) headers.set('Content-Security-Policy', SECURITY_HEADERS['Content-Security-Policy'].replace("style-src 'self'", "style-src 'self' 'unsafe-inline'"));
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     try {
       const url = new URL(request.url);
-      if (url.pathname !== '/api' && !url.pathname.startsWith('/api/')) return secured(await env.ASSETS.fetch(request));
+      if (url.pathname !== '/api' && !url.pathname.startsWith('/api/')) return secured(await env.ASSETS.fetch(request), true);
       if (url.search) throw new SessionFault('invalid_url', 'API query parameters are not supported.');
       if (url.pathname === '/api/health' && request.method === 'GET') return json({ status: 'ok', service: 'yonder-pairing', protocol: 1 });
       // Require the browser's exact same origin for every unsafe request and socket.
