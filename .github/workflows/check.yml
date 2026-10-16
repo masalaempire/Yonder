@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      npm_config_cache: ${{ runner.temp }}/yonder-npm-cache
+      npm_config_cache: /tmp/yonder-npm-cache
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -51,7 +51,7 @@ jobs:
         if: failure()
         with:
           name: npm-debug-logs
-          path: ${{ runner.temp }}/yonder-npm-cache/_logs/
+          path: /tmp/yonder-npm-cache/_logs/
           if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         if: always()
