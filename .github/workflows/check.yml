@@ -1,7 +1,7 @@
 name: Checks
 on:
   push:
-    branches: [main, codex/yonder-frontend]
+    branches: [main, 'codex/**']
   pull_request:
   workflow_dispatch:
 permissions:
@@ -40,6 +40,21 @@ jobs:
             sleep 1
           done
           npm run smoke:browser
+      - name: Export temporary visual review images
+        if: always()
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          for (const file of ['mobile-demo-direction.png', 'mobile-demo-weak.png', 'mobile-demo-nearby.png', 'mobile-preflight.png', 'small-mobile-demo-direction.png']) {
+            const path = 'test-results/browser/' + file;
+            if (!fs.existsSync(path)) continue;
+            const data = fs.readFileSync(path).toString('base64');
+            const count = Math.ceil(data.length / 10000);
+            for (let index = 0; index < count; index++) {
+              console.log('YONDER_IMAGE_FILE ' + path + ' ' + index + ' ' + count + ' ' + data.slice(index * 10000, (index + 1) * 10000));
+            }
+          }
+          NODE
       - run: npm run worker:check
       - name: Print dependency failure diagnostics
         if: failure() && steps.install.conclusion == 'failure'
