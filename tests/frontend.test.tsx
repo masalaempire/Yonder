@@ -1,0 +1,12 @@
+// @vitest-environment jsdom
+import { afterEach, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import React, { StrictMode } from 'react';
+import App from '../src/App';
+import { Guidance, guidanceQuality } from '../src/components/Guidance';
+vi.mock('../src/sensors/useSensors',()=>({useSensors:()=>({location:null,heading:null,locationStatus:'idle',compassStatus:'idle',locationError:null,compassError:null,requestLocation:vi.fn(),requestCompass:vi.fn(),stop:vi.fn()})}));
+afterEach(()=>{cleanup();vi.useRealTimers();window.history.replaceState(null,'','/');vi.unstubAllGlobals()});
+it('home and invitation entry make no network request or permission request',()=>{const fetch=vi.fn();vi.stubGlobal('fetch',fetch);window.history.replaceState(null,'','/#join=ABCD1234');render(<App/>);expect((screen.getByLabelText('Invite code') as HTMLInputElement).value).toBe('ABCD1234');expect(fetch).not.toHaveBeenCalled();expect(screen.getByText(/Joining won’t turn on sensors/)).toBeTruthy()});
+it('avoids misleading arrows within combined uncertainty',()=>{const now=Date.now(),a={latitude:0,longitude:0,accuracy:20,timestamp:now},b={...a,latitude:20/111195},h={degrees:0,timestamp:now,reference:'true' as const,source:'absolute' as const,accuracy:5};expect(guidanceQuality(a,b,h,now,true,true).arrow).toBe(false);expect(guidanceQuality(a,{...b,latitude:100/111195},h,now,true,true).arrow).toBe(true);expect(guidanceQuality(a,b,h,now,true,false).arrow).toBe(false)});
+it('locally disables guidance when locations stop arriving',()=>{vi.useFakeTimers();const now=Date.now(),a={latitude:0,longitude:0,accuracy:5,timestamp:now},b={...a,latitude:100/111195},h={degrees:0,timestamp:now,reference:'true' as const,source:'absolute' as const,accuracy:5};render(<Guidance local={a} peer={b} heading={h} connected visible/>);expect(screen.getByText('Head this way')).toBeTruthy();act(()=>vi.advanceTimersByTime(16000));expect(screen.queryByText('Head this way')).toBeNull();expect(screen.getByText('Waiting for fresh locations')).toBeTruthy();});
+it('survives strict-mode setup without cancelling an explicit session start',async()=>{const fetch=vi.fn().mockImplementation(()=>new Promise(()=>{}));vi.stubGlobal('fetch',fetch);render(<StrictMode><App/></StrictMode>);fireEvent.click(screen.getByRole('button',{name:/Create session/}));await Promise.resolve();expect(screen.getByText('Making room',{exact:false})).toBeTruthy();expect(fetch).toHaveBeenCalledTimes(1)});
