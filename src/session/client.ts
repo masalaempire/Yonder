@@ -118,8 +118,11 @@ export class SessionClient {
     this.value = { ...this.value, ...next };
     this.listeners.forEach((fn) => fn());
   }
-  async start(code?: string) {
-    this.stop("stopped", false);
+  async start(code?: string, options?: { preserveSensors?: boolean }) {
+    // Preflight acquisition belongs to App. Preserve it only for the explicit
+    // setup-to-session handoff; failures, disconnects and Stop still tear down.
+    const preserve = options?.preserveSensors === true && this.stopped && !this.value.grant;
+    this.finish("stopped", false, !preserve);
     this.stopped = false;
     const generation = this.generation;
     this.abort = new AbortController();
@@ -193,6 +196,7 @@ export class SessionClient {
       socket = this.makeSocket(url.href);
       this.socket = socket;
     } catch {
+      this.stopSensors();
       this.schedule(generation);
       return;
     }
@@ -365,11 +369,14 @@ export class SessionClient {
     this.patch({ peer: null });
   }
   stop(reason: EndReason = "stopped", notify = true) {
+    this.finish(reason, notify, true);
+  }
+  private finish(reason: EndReason, notify: boolean, stopSources: boolean) {
     const grant = this.value.grant;
     const socket = this.socket;
     this.stopped = true;
     ++this.generation;
-    this.stopSensors();
+    if (stopSources) this.stopSensors();
     this.abort?.abort();
     this.abort = null;
     if (this.retry) clearTimeout(this.retry);

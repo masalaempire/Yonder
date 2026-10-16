@@ -9,6 +9,7 @@ import {
   isFresh,
   updateProximity,
 } from "../lib/navigation";
+
 export function guidanceQuality(
   local: LocationFix | null,
   peer: LocationFix | null,
@@ -38,6 +39,7 @@ export function guidanceQuality(
       distance > local!.accuracy + peer!.accuracy,
   };
 }
+
 export function Guidance({
   local,
   peer,
@@ -63,14 +65,7 @@ export function Guidance({
     const timer = setInterval(() => setNow(Date.now()), 250);
     return () => clearInterval(timer);
   }, []);
-  const quality = guidanceQuality(
-    local,
-    peer,
-    heading,
-    now,
-    connected,
-    visible,
-  );
+  const quality = guidanceQuality(local, peer, heading, now, connected, visible);
   useEffect(() => {
     setNearby((previous) =>
       updateProximity(
@@ -90,80 +85,79 @@ export function Guidance({
     peer?.accuracy,
     now,
   ]);
+  let relative = 0;
   if (quality.arrow && heading) {
-    const target = relativeBearing(quality.bearing, heading.degrees);
-    rotation.current += shortestAngleDelta(rotation.current, target);
+    relative = relativeBearing(quality.bearing, heading.degrees);
+    rotation.current += shortestAngleDelta(rotation.current, relative);
   }
-  const showNearby = nearby.nearby && quality.fresh && quality.accurate;
+  const showNearby =
+    nearby.nearby && quality.fresh && quality.accurate &&
+    !!local && !!peer && local.accuracy <= 20 && peer.accuracy <= 20 &&
+    local.accuracy + peer.accuracy <= 24 && quality.distance < 20;
   const showArrow = quality.arrow && !showNearby;
-  const age =
-    local && peer
-      ? Math.max(
-          0,
-          Math.floor((now - Math.min(local.timestamp, peer.timestamp)) / 1000),
-        )
-      : 0;
-  let status = message || "Waiting for fresh locations";
-  if (!visible) status = "Return to Yonder to continue";
+  const phase = showNearby ? "nearby" : showArrow ? "direction" : "weak";
+  useEffect(() => {
+    const theme = document.querySelector('meta[name="theme-color"]');
+    theme?.setAttribute("content", phase === "weak" ? "#080808" : "#00c45b");
+    return () => { theme?.setAttribute("content", "#080808"); };
+  }, [phase]);
+  let status = message || "Weak signal";
+  if (!visible) status = "Return to continue";
   else if (!connected) status = "Connection interrupted";
-  else if (quality.fresh && !quality.accurate)
-    status = "Location accuracy is low";
-  else if (showNearby) status = "You may be nearby";
-  else if (quality.fresh && !quality.compass)
-    status = "Compass direction unavailable";
-  else if (quality.fresh && !quality.arrow)
-    status = "Too close for a reliable direction";
-  else if (showArrow) status = "Head this way";
+  else if (quality.fresh && !quality.accurate) status = "Weak signal";
+  else if (showNearby) status = "nearby";
+  else if (quality.fresh && !quality.compass) status = "Compass unavailable";
+  else if (quality.fresh && !quality.arrow) status = "Weak signal";
+  else if (showArrow) {
+    status = Math.abs(relative) <= 20 ? "ahead"
+      : Math.abs(relative) >= 160 ? "behind you"
+      : relative > 0 ? "to your right" : "to your left";
+  }
   const distance = Number.isFinite(quality.distance)
     ? quality.distance < 1000
       ? Math.max(5, Math.round(quality.distance / 5) * 5) + " m"
       : (Math.round(quality.distance / 100) / 10).toFixed(1) + " km"
     : "—";
+  const age = local && peer
+    ? Math.max(0, Math.floor((now - Math.min(local.timestamp, peer.timestamp)) / 1000))
+    : 0;
   return (
     <section
       className={"guidance " + (quality.fresh ? "" : "awaiting-locations")}
+      data-phase={phase}
       aria-label="Direction to your friend"
     >
-      <div
-        className={"direction-disc " + (showArrow ? "available" : "")}
-        aria-hidden="true"
-      >
-        <span className="axis axis-h" />
-        <span className="axis axis-v" />
+      <div className="finding-visual" aria-hidden="true">
         {showArrow ? (
-          <svg
-            className="direction-arrow"
-            viewBox="0 0 180 210"
-            style={{ transform: "rotate(" + rotation.current + "deg)" }}
-          >
-            <path d="M90 8C95 8 98 12 101 18L170 158C175 169 168 178 158 174L108 153V198C108 204 103 208 97 208H83C77 208 72 204 72 198V153L22 174C12 178 5 169 10 158L79 18C82 12 85 8 90 8Z" />
-          </svg>
+          <div className="direction-vector" style={{ transform: "rotate(" + rotation.current + "deg)" }}>
+            <span className="target-dot" />
+            <svg className="direction-arrow" viewBox="0 0 260 320">
+              <path d="M130 282V94M48 176L130 94L212 176" />
+            </svg>
+          </div>
+        ) : showNearby ? (
+          <span className="location-dot nearby" />
         ) : (
-          <span className={"location-dot " + (showNearby ? "nearby" : "")} />
+          <div className="signal-field">
+            <span className="signal-ring" />
+            <span className="signal-orbit" />
+          </div>
         )}
       </div>
-      <p className="eyebrow">STRAIGHT-LINE DISTANCE</p>
-      <div className="distance">
-        {quality.fresh ? (
-          <>
-            <span className="approx">~</span>
-            {distance}
-          </>
-        ) : (
-          "—"
-        )}
+      <div className="finding-readout">
+        <div className="distance" aria-label={quality.fresh ? "Approximately " + distance : "Distance unavailable"}>
+          {quality.fresh ? <><span className="approx" aria-hidden="true">~</span><span>{distance}</span></> : "—"}
+        </div>
+        {showNearby && <p className="nearby-estimate visually-hidden">Approximate location</p>}
+        <h2 className="direction-status" aria-live="polite">{status}</h2>
+        <p className="quality visually-hidden">
+          {quality.fresh && local && peer
+            ? "Accuracy about ±" + Math.round(local.accuracy + peer.accuracy) +
+              " m · updated " + (age === 0 ? "just now" : age + "s ago") +
+              ". Straight-line estimate, not a walking route."
+            : "Direction needs fresh, accurate locations and a true-north compass."}
+        </p>
       </div>
-      <h2 className="direction-status" aria-live="polite">
-        {status}
-      </h2>
-      <p className="quality">
-        {quality.fresh && local && peer
-          ? "Accuracy about ±" +
-            Math.round(local.accuracy + peer.accuracy) +
-            " m · updated " +
-            (age === 0 ? "just now" : age + "s ago")
-          : "Direction appears only with fresh, accurate readings."}
-      </p>
     </section>
   );
 }

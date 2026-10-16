@@ -4,7 +4,7 @@ A mobile-first arrow that helps two friends find each other. No map, accounts, n
 
 ## Status
 
-Frontend and Cloudflare Worker/Durable Object source are provided on this branch. **Undeployed:** no Cloudflare service, binding, domain, or account connection has been created. Physical iOS Safari and Android Chrome acceptance remains **PHYSICAL PENDING**. Passing automated checks does not prove real compass accuracy, hibernation, or production pairing.
+The repository includes frontend and Cloudflare Worker/Durable Object source. You manage deployment in your Cloudflare account; frontend changes reach the live site through your merge/deploy workflow. Physical iOS Safari and Android Chrome acceptance remains **PHYSICAL PENDING**. Passing automated checks does not prove real compass accuracy, hibernation, or production pairing.
 
 ## Run and check
 
@@ -23,6 +23,8 @@ Vite alone previews the frontend. Real pairing needs the same-origin Worker API.
 - [Cloudflare setup](docs/CLOUDFLARE_SETUP.md): your own GitHub connection, bindings, commands, and deployment choices.
 - [API and privacy boundaries](docs/API.md): temporary sessions, credentials, consent, validation, and expiry.
 - [Device testing](docs/DEVICE_TESTING.md): physical acceptance checklist and honest evidence categories.
+
+Before creating or joining a session, enable location and compass with their separate buttons. The session begins only after an explicit Create/Join tap; pairing still requires a separate sharing consent. If the requested compass is unavailable, choose Continue without compass for approximate distance only. Finding controls and sensor information are available through Information. The simulated demo uses no sensors or session API.
 
 ## Privacy and limitations
 

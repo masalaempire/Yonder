@@ -218,3 +218,36 @@ it("times out unresponsive authentication and cancels further work on stop", asy
   vi.advanceTimersByTime(60000);
   expect(sockets).toHaveLength(1);
 });
+
+it("preserves preflight sources only for a stopped client and still stops active replacements", async () => {
+  await client.start(undefined, { preserveSensors: true });
+  expect(stop).not.toHaveBeenCalled();
+  const first = sockets[0];
+  first.open();
+  first.receive(state({ phase: "consent", selfConsent: false, peerConsent: false }));
+  client.sendFix({ latitude: 1, longitude: 2, accuracy: 5, timestamp: Date.now() });
+  expect(first.sent.some(message => JSON.parse(message).type === "location")).toBe(false);
+  await client.start(undefined, { preserveSensors: true });
+  expect(stop).toHaveBeenCalledTimes(1);
+  expect(first.readyState).toBe(3);
+  client.stop();
+  expect(stop).toHaveBeenCalledTimes(2);
+});
+it("cleans up preserved preflight sources when session creation fails", async () => {
+  request.mockRejectedValue(new Error("Unavailable"));
+  await client.start(undefined, { preserveSensors: true });
+  expect(stop).toHaveBeenCalledTimes(1);
+  expect(client.getSnapshot().error).toBe("Unavailable");
+});
+
+it("stops preserved sensors when a socket cannot be constructed and does not restart them on retry", async () => {
+  const makeSocket = vi.fn().mockImplementation(() => { throw new Error("Unavailable"); });
+  const isolated = new SessionClient(stop, request as typeof fetch, makeSocket);
+  await isolated.start(undefined, { preserveSensors: true });
+  expect(stop).toHaveBeenCalledTimes(1);
+  expect(isolated.getSnapshot().connection).toBe("interrupted");
+  vi.advanceTimersByTime(1000);
+  expect(makeSocket).toHaveBeenCalledTimes(2);
+  expect(stop).toHaveBeenCalledTimes(2);
+  isolated.stop();
+});
