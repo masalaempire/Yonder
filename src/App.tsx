@@ -1,14 +1,29 @@
-import React, {
-  useEffect,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import React, { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import QRCode from "qrcode";
-import { SessionClient, invitationCode, normalizeCode } from "./session/client";
+import { SessionClient, invitationCode, normalizeCode, validFix } from "./session/client";
 import { useSensors } from "./sensors/useSensors";
+import { isFresh } from "./lib/navigation";
+import { COMPASS_MAX_AGE, MAX_COMPASS_ACCURACY } from "./sensors/compass";
 import { Guidance } from "./components/Guidance";
+import { FindingFrame } from "./components/FindingFrame";
 import Demo from "./components/Demo";
+
+type Sensors = ReturnType<typeof useSensors>;
+function locationReady(sensors: Sensors, now: number, after: number) {
+  return sensors.locationStatus === "ready" && validFix(sensors.location, now) &&
+    isFresh(sensors.location, now) && sensors.location!.timestamp >= after;
+}
+function compassReady(sensors: Sensors, now: number, after: number) {
+  const heading = sensors.heading;
+  return sensors.compassStatus === "ready" && !!heading &&
+    heading.reference === "true" && Number.isFinite(heading.degrees) &&
+    heading.degrees >= 0 && heading.degrees < 360 &&
+    (heading.accuracy === null || (Number.isFinite(heading.accuracy) &&
+      heading.accuracy >= 0 && heading.accuracy <= MAX_COMPASS_ACCURACY)) &&
+    isFresh(heading, now, COMPASS_MAX_AGE) && heading.timestamp >= after;
+}
+const compassFailed = (sensors: Sensors) =>
+  ["denied", "unavailable", "unusable", "error"].includes(sensors.compassStatus);
 
 function Invite({ code }: { code: string }) {
   const url =
@@ -76,7 +91,6 @@ function Invite({ code }: { code: string }) {
       <p className="invite-code">
         {code.slice(0, 4)} {code.slice(4)}
       </p>
-      <p>Your friend can scan, open the link, or enter this code.</p>
       <div className="button-row">
         <button className="secondary" onClick={share}>
           Share invite ↗
@@ -85,502 +99,265 @@ function Invite({ code }: { code: string }) {
           Copy link
         </button>
       </div>
-      <label className="link-label">
+      <details><summary>Invite link</summary><label className="link-label">
         Invite link
         <input readOnly value={url} onFocus={(e) => e.target.select()} />
-      </label>
+      </label></details>
       <p className="notice" role="status">
         {notice}
       </p>
     </section>
   );
 }
-function SensorButtons({
-  sensors,
-}: {
-  sensors: ReturnType<typeof useSensors>;
-}) {
-  return (
-    <section className="sensor-tools" aria-label="Sensor permissions">
-      <button className="secondary" onClick={() => sensors.requestLocation()}>
-        {sensors.locationStatus === "ready"
-          ? "Refresh location"
-          : "Enable location"}
-      </button>
-      <button
-        className="secondary"
-        onClick={() => {
-          void sensors.requestCompass();
-        }}
-      >
-        {sensors.compassStatus === "ready"
-          ? "Refresh compass"
-          : "Enable compass"}
-      </button>
-      <p>
-        Location: {sensors.locationStatus}. Compass: {sensors.compassStatus}.
-      </p>
-      {(sensors.locationError || sensors.compassError) && (
-        <p role="status">
-          {sensors.locationError || sensors.compassError} You can retry here or
-          allow access in browser settings.
-        </p>
-      )}
-    </section>
-  );
+
+function SensorButtons({ sensors }: { sensors: Sensors }) {
+  return <section className="sensor-tools" aria-label="Sensor permissions">
+    <button className="secondary" onClick={() => sensors.requestLocation()}>
+      {sensors.locationStatus === "ready" ? "Refresh location" : "Enable location"}
+    </button>
+    <button className="secondary" onClick={() => { void sensors.requestCompass(); }}>
+      {sensors.compassStatus === "ready" ? "Refresh compass" : "Enable compass"}
+    </button>
+    <p>Location: {sensors.locationStatus}. Compass: {sensors.compassStatus}.</p>
+    {(sensors.locationError || sensors.compassError) &&
+      <p role="status">{sensors.locationError || sensors.compassError}</p>}
+  </section>;
 }
-function Live({
-  client,
-  onExit,
-}: {
-  client: SessionClient;
-  onExit: () => void;
+
+function PermissionSetup({ sensors, joining, foregroundAt, onCancel, onStart }: {
+  sensors: Sensors; joining: boolean; foregroundAt: number;
+  onCancel: () => void; onStart: (distanceOnly: boolean, compassAttempted: boolean) => void;
 }) {
-  const lifecycle = useRef(0);
+  const [attempted, setAttempted] = useState(false);
+  const [distanceOnly, setDistanceOnly] = useState(false);
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(timer);
+  }, []);
+  const location = locationReady(sensors, now, foregroundAt);
+  const compass = compassReady(sensors, now, foregroundAt);
+  const fallback = attempted && compassFailed(sensors);
+  const ready = document.visibilityState !== "hidden" && location &&
+    (compass || (distanceOnly && fallback));
+  return <section className="permission-setup">
+    <button className="back-button" onClick={onCancel}>← Back</button>
+    <h1>Before you begin</h1>
+    <p className="setup-note">Enable location and compass on this phone. Readings stay here until you both agree to share.</p>
+    <div className="permission-row">
+      <span>Location</span><span role="status">{location ? "Ready" : sensors.locationStatus === "ready" ? "Needs a fresh reading" : sensors.locationStatus}</span>
+      <button className="secondary" onClick={() => { setDistanceOnly(false); sensors.requestLocation(); }}>Enable location</button>
+    </div>
+    <div className="permission-row">
+      <span>Compass</span><span role="status">{compass ? "Ready" : sensors.compassStatus === "ready" ? "Needs a fresh reading" : sensors.compassStatus}</span>
+      <button className="secondary" onClick={() => {
+        setAttempted(true); setDistanceOnly(false);
+        // Keep this call in the original tap, before any await.
+        void sensors.requestCompass();
+      }}>Enable compass</button>
+    </div>
+    {(sensors.locationError || sensors.compassError) &&
+      <p className="setup-note" role="status">{sensors.locationError || sensors.compassError}</p>}
+    {fallback && <div className="setup-actions">
+      <p className="setup-note">Without a compass, you can see distance only.</p>
+      <button className="secondary" aria-pressed={distanceOnly} disabled={!location}
+        onClick={() => setDistanceOnly(true)}>Continue without compass</button>
+    </div>}
+    {distanceOnly && fallback && <p className="setup-note" role="status">Distance only selected.</p>}
+    <div className="setup-actions">
+      <button className="primary" disabled={!ready} onClick={() => onStart(distanceOnly, attempted)}>
+        {joining ? "Join session" : "Create session"}
+      </button>
+    </div>
+  </section>;
+}
+
+function Live({ client, sensors, visible, foregroundAt, onExit }: {
+  client: SessionClient; sensors: Sensors; visible: boolean; foregroundAt: number; onExit: () => void;
+}) {
+  const state = useSyncExternalStore(client.subscribe, client.getSnapshot);
+  const sensorsRef = useRef(sensors);
+  sensorsRef.current = sensors;
+  const previousConsent = useRef(false);
+  useEffect(() => {
+    // Initial preflight readings are local only. Revocation after consent stops them.
+    if (previousConsent.current && !state.session?.selfConsent) sensorsRef.current.stop();
+    previousConsent.current = !!state.session?.selfConsent;
+  }, [state.session?.selfConsent]);
+  useEffect(() => {
+    if (sensors.locationStatus === "denied" && state.session?.selfConsent) client.stop();
+  }, [client, sensors.locationStatus, state.session?.selfConsent]);
+  useEffect(() => {
+    if (visible && sensors.location && sensors.location.timestamp >= foregroundAt)
+      client.sendFix(sensors.location);
+  }, [client, sensors.location, state.session, state.connection, visible, foregroundAt]);
+  const end = (found = false) => client.stop(found ? "found" : "stopped");
+  if (state.connection === "ended" || (state.error && !state.grant))
+    return <section className="ending">
+      <h1>{state.error ? "Unable to connect" : state.reason === "found" ? "There you are." : "Session ended"}</h1>
+      <p>{state.error || (state.reason === "expired" ? "This session expired." : "Location sharing has stopped.")}</p>
+      <button className="primary" onClick={onExit}>Back to Yonder</button>
+    </section>;
+  const session = state.session;
+  const sharing = session?.phase === "sharing" && session.selfConsent && session.peerConsent;
+  const local = sensors.location && sensors.location.timestamp >= foregroundAt ? sensors.location : null;
+  const heading = sensors.heading && sensors.heading.timestamp >= foregroundAt ? sensors.heading : null;
+  if (sharing) return <FindingFrame onStop={() => end()} onFound={() => end(true)}
+    info={<>
+      <SensorButtons sensors={sensors} />
+      <p className="setup-note">GPS gives approximate straight-line guidance. Keep Yonder open.</p>
+    </>}>
+    <Guidance local={local} peer={state.peer} heading={heading}
+      connected={state.connection === "connected" && !!session.peerConnected} visible={visible}
+      message={sensors.locationStatus === "requesting" ? "Acquiring your location" :
+        !local ? "Enable location to continue" : undefined} />
+  </FindingFrame>;
+  return <div className="live-session">
+    <div className="session-top">
+      <button className="round-control" aria-label="Stop sharing" onClick={() => end()}>×</button>
+    </div>
+    {!state.grant ? <section className="intro compact">
+      <h1>Making room for two</h1><p>Connecting…</p>
+    </section> : !session || session.participants < 2 ? <>
+      <section className="intro compact"><h1>Invite your friend</h1><p>Waiting for your friend to join.</p></section>
+      <Invite code={state.grant.code} />
+    </> : !session.selfConsent ? <section className="intro consent">
+      <h1>Ready to share?</h1>
+      <p>Share your live location with your friend? Both of you must agree.</p>
+      <button className="primary" disabled={state.connection !== "connected"} onClick={() => client.consent()}>Share my location</button>
+    </section> : <section className="intro compact">
+      <h1>Waiting for your friend</h1><p>Nothing is sent until you both agree.</p>
+    </section>}
+  </div>;
+}
+
+function SensorCheck({ sensors, onExit }: { sensors: Sensors; onExit: () => void }) {
+  return <>
+    <button className="back-button" onClick={onExit}>← Back</button>
+    <section className="intro compact"><h1>Sensor check</h1>
+      <p>Readings stay on this phone.</p></section>
+    <SensorButtons sensors={sensors} />
+    <dl className="diagnostics">
+      <dt>Location accuracy</dt><dd>{sensors.location ? "±" + Math.round(sensors.location.accuracy) + " m" : "No reading"}</dd>
+      <dt>True-north heading</dt><dd>{sensors.heading ? Math.round(sensors.heading.degrees) + "°" : "No reading"}</dd>
+    </dl>
+  </>;
+}
+export default function App() {
+  const [screen, setScreen] = useState<"home" | "join" | "setup" | "live" | "demo" | "check">(
+    () => invitationCode(window.location.hash) ? "join" : "home");
+  const [code, setCode] = useState(() => invitationCode(window.location.hash));
+  const [client] = useState(() => new SessionClient());
+  // A single controller survives preflight -> Live, with no remount teardown.
   const sensors = useSensors();
   const sensorsRef = useRef(sensors);
   sensorsRef.current = sensors;
-  const state = useSyncExternalStore(client.subscribe, client.getSnapshot);
+  const lifecycle = useRef(0);
+  const setup = useRef<{ code?: string } | null>(null);
+  const [joining, setJoining] = useState(false);
   const [visible, setVisible] = useState(document.visibilityState !== "hidden");
   const [foregroundAt, setForegroundAt] = useState(0);
+  const foregroundRef = useRef(foregroundAt);
+  foregroundRef.current = foregroundAt;
   useEffect(() => {
-    const handle = () => {
+    const generation = ++lifecycle.current;
+    client.setSensorStop(() => sensorsRef.current.stop());
+    const visibility = () => {
       const shown = document.visibilityState !== "hidden";
       setVisible(shown);
       client.clearPeer();
       if (!shown) sensorsRef.current.stop();
-      if (shown) setForegroundAt(Date.now());
+      else {
+        foregroundRef.current = Date.now();
+        setForegroundAt(foregroundRef.current);
+      }
     };
-    document.addEventListener("visibilitychange", handle);
-    return () => document.removeEventListener("visibilitychange", handle);
-  }, [client]);
-  useEffect(() => {
-    const generation = ++lifecycle.current;
-    client.setSensorStop(() => sensorsRef.current.stop());
+    const pagehide = () => { setup.current = null; client.stop(); };
+    document.addEventListener("visibilitychange", visibility);
+    window.addEventListener("pagehide", pagehide);
     return () => {
+      setup.current = null;
       sensorsRef.current.stop();
-      queueMicrotask(() => {
-        if (lifecycle.current === generation) client.stop();
-      });
+      document.removeEventListener("visibilitychange", visibility);
+      window.removeEventListener("pagehide", pagehide);
+      // React StrictMode immediately installs a new generation. Real unmount
+      // still cancels pending HTTP/socket work after sources stop synchronously.
+      queueMicrotask(() => { if (lifecycle.current === generation) client.stop(); });
     };
   }, [client]);
-  useEffect(() => {
-    if (state.session && !state.session.selfConsent) sensorsRef.current.stop();
-  }, [state.session?.selfConsent]);
-  useEffect(() => {
-    const endOnExit = () => {
-      sensorsRef.current.stop();
-      client.stop();
-    };
-    window.addEventListener("pagehide", endOnExit);
-    return () => window.removeEventListener("pagehide", endOnExit);
-  }, [client]);
-  useEffect(() => {
-    if (sensors.locationStatus === "denied" && state.session?.selfConsent)
-      client.stop();
-  }, [client, sensors.locationStatus, state.session?.selfConsent]);
-  useEffect(() => {
-    if (
-      visible &&
-      sensors.location &&
-      sensors.location.timestamp >= foregroundAt
-    )
-      client.sendFix(sensors.location);
-  }, [
-    client,
-    sensors.location,
-    state.session,
-    state.connection,
-    visible,
-    foregroundAt,
-  ]);
-  const end = (found = false) => {
-    sensors.stop();
-    client.stop(found ? "found" : "stopped");
-  };
-  if (state.connection === "ended")
-    return (
-      <section className="ending">
-        <span className="end-mark">↗</span>
-        <p className="eyebrow">SESSION ENDED</p>
-        <h1>
-          {state.reason === "found" ? "There you are." : "Until next time."}
-        </h1>
-        <p>
-          {state.reason === "expired"
-            ? "This temporary session expired."
-            : state.reason === "found"
-              ? "You chose to finish. Location sharing has stopped."
-              : "Location sharing has stopped."}
-        </p>
-        {state.error && <p role="alert">{state.error}</p>}
-        <button className="primary" onClick={onExit}>
-          Back to Yonder
-        </button>
-      </section>
-    );
-  if (state.error && !state.grant)
-    return (
-      <section className="ending">
-        <h1>One more step.</h1>
-        <p role="alert">{state.error}</p>
-        <button className="primary" onClick={onExit}>
-          Back to Yonder
-        </button>
-      </section>
-    );
-  const session = state.session;
-  const sharing =
-    session?.phase === "sharing" && session.selfConsent && session.peerConsent;
-  const local =
-    sensors.location && sensors.location.timestamp >= foregroundAt
-      ? sensors.location
-      : null;
-  const heading =
-    sensors.heading && sensors.heading.timestamp >= foregroundAt
-      ? sensors.heading
-      : null;
-  const needsSensors = !local || !heading;
-  return (
-    <div className={"live-session " + (sharing ? "is-finding" : "")}>
-      <div className="session-top">
-        <span
-          className={
-            "live-badge " + (state.connection === "connected" ? "is-live" : "")
-          }
-        >
-          {state.connection === "connected"
-            ? sharing
-              ? "SHARING LIVE"
-              : "CONNECTED"
-            : state.connection === "interrupted"
-              ? "RECONNECTING"
-              : "CONNECTING"}
-        </span>
-        <span>Temporary · private</span>
-      </div>
-      {!state.grant ? (
-        <section className="intro">
-          <h1>
-            Making room
-            <br />
-            for two.
-          </h1>
-          <p>Creating your private session…</p>
-        </section>
-      ) : !session || session.participants < 2 ? (
-        <>
-          <section className="intro compact">
-            <h1>
-              A friend.
-              <br />
-              An invite.
-            </h1>
-            <p>
-              Waiting for your friend to join. Your location is not being
-              shared.
-            </p>
-          </section>
-          <Invite code={state.grant.code} />
-        </>
-      ) : !session.selfConsent ? (
-        <section className="intro consent">
-          <span className="pair-symbol" aria-hidden="true">
-            • &nbsp; •
-          </span>
-          <h1>
-            Ready when
-            <br />
-            you both are.
-          </h1>
-          <p>
-            Share your live location with this one person for this temporary
-            session. Both people must agree before any coordinates are sent.
-          </p>
-          <button
-            className="primary"
-            disabled={state.connection !== "connected"}
-            onClick={() => client.consent()}
-          >
-            Share my location
-          </button>
-          <p className="fine-print">
-            Pairing alone does not share your location. You can stop at any
-            time.
-          </p>
-        </section>
-      ) : (
-        <div className={"finding-content " + (needsSensors ? "needs-sensors" : "")}>
-          {needsSensors && <SensorButtons sensors={sensors} />}
-          {!session.peerConsent ? (
-            <section className="intro compact">
-              <h1>
-                Your turn.
-                <br />
-                Their choice.
-              </h1>
-              <p>Waiting for your friend to agree. Nothing is sent yet.</p>
-            </section>
-          ) : (
-            <Guidance
-              local={local}
-              peer={state.peer}
-              heading={heading}
-              connected={
-                state.connection === "connected" && !!session.peerConnected
-              }
-              visible={visible}
-              message={
-                sensors.locationStatus === "requesting"
-                  ? "Acquiring your location"
-                  : !local
-                    ? "Enable location to begin"
-                    : undefined
-              }
-            />
-          )}
-          {!needsSensors && (
-            <details className="sensor-diagnostics">
-              <summary>Sensor controls</summary>
-              <SensorButtons sensors={sensors} />
-            </details>
-          )}
-          {sharing && (
-            <p className="fine-print limitation">
-              Straight-line guidance, not a walking route. Stay in the
-              foreground and look around safely.
-            </p>
-          )}
-        </div>
-      )}
-      <footer className="session-footer">
-        {sharing && (
-          <button className="primary" onClick={() => end(true)}>
-            We found each other
-          </button>
-        )}
-        <button className="stop-button" onClick={() => end()}>
-          Stop sharing
-        </button>
-        <p>
-          Sensors stop now. Offline peer readings expire within 15 seconds.
-        </p>
-      </footer>
-    </div>
-  );
-}
-function SensorCheck({ onExit }: { onExit: () => void }) {
-  const sensors = useSensors();
-  const back = () => {
-    sensors.stop();
-    onExit();
-  };
-  return (
-    <>
-      <button className="back-button" onClick={back}>
-        ← Back
-      </button>
-      <section className="intro compact">
-        <p className="eyebrow">ON THIS PHONE ONLY</p>
-        <h1>
-          A quick
-          <br />
-          sensor check.
-        </h1>
-        <p>
-          Check your browser’s location and true-north compass. These readings
-          stay on this screen and are never transmitted.
-        </p>
-      </section>
-      <SensorButtons sensors={sensors} />
-      <dl className="diagnostics">
-        <dt>Location accuracy</dt>
-        <dd>
-          {sensors.location
-            ? "±" + Math.round(sensors.location.accuracy) + " m"
-            : "No reading"}
-        </dd>
-        <dt>True-north heading</dt>
-        <dd>
-          {sensors.heading
-            ? Math.round(sensors.heading.degrees) + "°"
-            : "No reading"}
-        </dd>
-        <dt>Compass source</dt>
-        <dd>{sensors.heading?.source || "No reading"}</dd>
-      </dl>
-      <button className="stop-button" onClick={back}>
-        Stop sensors & back
-      </button>
-      <p className="fine-print">
-        Some browsers do not expose a usable compass. A secure HTTPS connection
-        is required.
-      </p>
-    </>
-  );
-}
-export default function App() {
-  const [screen, setScreen] = useState<
-    "home" | "join" | "live" | "demo" | "check"
-  >(() => (invitationCode(window.location.hash) ? "join" : "home"));
-  const [code, setCode] = useState(() => invitationCode(window.location.hash));
-  const [client] = useState(() => new SessionClient());
   useEffect(() => {
     const handle = () => {
       const invite = invitationCode(window.location.hash);
       if (invite) {
         setCode(invite);
-        setScreen((current) =>
-          current === "home" || current === "join" ? "join" : current,
-        );
+        setScreen(current => current === "home" || current === "join" ? "join" : current);
       }
     };
     window.addEventListener("hashchange", handle);
     return () => window.removeEventListener("hashchange", handle);
   }, []);
   const home = () => {
+    setup.current = null;
     client.stop();
-    window.history.replaceState(
-      null,
-      "",
-      window.location.pathname + window.location.search,
-    );
+    window.history.replaceState(null, "", window.location.pathname + window.location.search);
     setScreen("home");
   };
-  const start = (join?: string) => {
-    setScreen("live");
-    void client.start(join);
+  const prepare = (join?: string) => {
+    client.stop();
+    setup.current = { code: join };
+    setJoining(!!join);
+    setScreen("setup");
   };
-  return (
-    <div className="site-shell">
-      <aside className="desktop-note">
-        <span>
-          FIND YOUR WAY
-          <br />
-          TO EACH OTHER.
-        </span>
-        <p>
-          A shared moment.
-          <br />A little direction.
-        </p>
-      </aside>
-      <main className={"phone-shell screen-" + screen}>
-        <header className="app-header">
-          <button className="wordmark" onClick={home} aria-label="Yonder home">
-            Yonder <span aria-hidden="true">↗</span>
-          </button>
-          <span className="header-note">A little closer.</span>
-        </header>
-        {screen === "home" && (
-          <>
-            <section className="hero">
-              <p className="eyebrow">
-                <span className="tiny-dot" /> JUST YOU TWO
-              </p>
-              <h1>
-                A little
-                <br />
-                closer.
-              </h1>
-              <p className="hero-copy">
-                Find a friend in the here and now.
-                <br />
-                One shared direction. No map needed.
-              </p>
-              <div className="home-arrow" aria-hidden="true">
-                ↗
-              </div>
-            </section>
-            <div className="home-actions">
-              <button className="primary" onClick={() => start()}>
-                Create session <span>↗</span>
-              </button>
-              <button className="secondary" onClick={() => setScreen("join")}>
-                Join session
-              </button>
-              <div className="button-row">
-                <button
-                  className="text-button"
-                  onClick={() => setScreen("demo")}
-                >
-                  Try a demo
-                </button>
-                <button
-                  className="text-button"
-                  onClick={() => setScreen("check")}
-                >
-                  Sensor check
-                </button>
-              </div>
-            </div>
-            <p className="home-footnote">
-              Temporary sharing, with both people’s permission.
-              <br />
-              Keep Yonder open. Stop whenever you like.
-            </p>
-          </>
-        )}
-        {screen === "join" && (
-          <>
-            <button className="back-button" onClick={home}>
-              ← Back
-            </button>
-            <section className="intro">
-              <p className="eyebrow">YOUR FRIEND IS YONDER</p>
-              <h1>
-                Eight characters.
-                <br />
-                One friend.
-              </h1>
-              <p>
-                Enter your friend’s invite code. Joining won’t turn on sensors
-                or share your location.
-              </p>
-            </section>
-            <form
-              className="join-form"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (/^[A-HJ-NP-Z2-9]{8}$/.test(code)) start(code);
-              }}
-            >
-              <label htmlFor="invite-code">Invite code</label>
-              <input
-                id="invite-code"
-                value={code}
-                onChange={(e) => setCode(normalizeCode(e.target.value))}
-                autoCapitalize="characters"
-                autoComplete="off"
-                spellCheck={false}
-                placeholder="ABCD2345"
-                maxLength={16}
-                aria-describedby="code-hint"
-              />
-              <p id="code-hint">
-                8 characters: A–Z except I/O, and 2–9. Paste the code if you
-                like.
-              </p>
-              <button
-                className="primary"
-                disabled={!/^[A-HJ-NP-Z2-9]{8}$/.test(code)}
-              >
-                Join session <span>↗</span>
-              </button>
-            </form>
-          </>
-        )}
-        {screen === "live" && <Live client={client} onExit={home} />}
-        {screen === "demo" && <Demo onExit={home} />}
-        {screen === "check" && <SensorCheck onExit={home} />}
-      </main>
-      <aside className="desktop-caption">
-        <span className="tiny-dot" />
-        <p>
-          Closer, together.
-          <br />
-          <span>A temporary direction to a friend.</span>
-        </p>
-      </aside>
-    </div>
-  );
+  const start = (distanceOnly: boolean, compassAttempted: boolean) => {
+    const pending = setup.current;
+    const current = sensorsRef.current;
+    const now = Date.now();
+    // Recheck at this explicit tap. Async callbacks never create/join a session.
+    if (!pending || document.visibilityState === "hidden" ||
+      !locationReady(current, now, foregroundRef.current) ||
+      !(compassReady(current, now, foregroundRef.current) ||
+        (distanceOnly && compassAttempted && compassFailed(current)))) return;
+    setup.current = null;
+    setScreen("live");
+    void client.start(pending.code, { preserveSensors: true });
+  };
+  return <div className="site-shell">
+    <main className={"phone-shell screen-" + screen}>
+      {screen !== "live" && screen !== "demo" && <header className="app-header">
+        <button className="wordmark" onClick={home} aria-label="Yonder home">Yonder</button>
+      </header>}
+      {screen === "home" && <>
+        <section className="hero"><div className="home-arrow" aria-hidden="true">↗<span className="tiny-dot" /></div></section>
+        <div className="home-actions">
+          <button className="primary" onClick={() => prepare()}>Create session</button>
+          <button className="secondary" onClick={() => setScreen("join")}>Join session</button>
+          <div className="button-row">
+            <button className="text-button" onClick={() => setScreen("demo")}>Try a demo</button>
+            <button className="text-button" onClick={() => setScreen("check")}>Sensor check</button>
+          </div>
+        </div>
+      </>}
+      {screen === "join" && <>
+        <button className="back-button" onClick={home}>← Back</button>
+        <section className="intro compact"><h1>Join your friend</h1></section>
+        <form className="join-form" onSubmit={e => {
+          e.preventDefault();
+          if (/^[A-HJ-NP-Z2-9]{8}$/.test(code)) prepare(code);
+        }}>
+          <label htmlFor="invite-code">Invite code</label>
+          <input id="invite-code" value={code} onChange={e => setCode(normalizeCode(e.target.value))}
+            autoCapitalize="characters" autoComplete="off" spellCheck={false} placeholder="ABCD2345"
+            maxLength={16} aria-describedby="code-hint" />
+          <p id="code-hint">8 characters from your friend’s invite.</p>
+          <button className="primary" disabled={!/^[A-HJ-NP-Z2-9]{8}$/.test(code)}>Join session</button>
+        </form>
+      </>}
+      {screen === "setup" && <PermissionSetup sensors={sensors} joining={joining}
+        foregroundAt={foregroundAt} onCancel={home} onStart={start} />}
+      {screen === "live" && <Live client={client} sensors={sensors} visible={visible}
+        foregroundAt={foregroundAt} onExit={home} />}
+      {screen === "demo" && <Demo onExit={home} />}
+      {screen === "check" && <SensorCheck sensors={sensors} onExit={home} />}
+    </main>
+  </div>;
 }
