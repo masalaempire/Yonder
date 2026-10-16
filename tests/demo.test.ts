@@ -53,9 +53,15 @@ it("offers live-equivalent weak and sustained nearby phases through simulated fi
   expect(view.container.querySelector(".distance")?.textContent).toBe("—");
   fireEvent.click(screen.getByLabelText("Stale location"));
   fireEvent.change(screen.getByLabelText(/Move closer/), { target: { value: "5" } });
-  act(() => vi.advanceTimersByTime(2250));
+  // Flush each guidance tick so the demo's 500ms fixes and 250ms clock
+  // remain chronological rather than batching a future fix with an old clock.
+  for (let tick = 0; tick < 9; tick++) {
+    act(() => vi.advanceTimersByTime(250));
+  }
   expect(view.container.querySelector('[data-phase="nearby"]')).toBeNull();
-  act(() => vi.advanceTimersByTime(500));
+  for (let tick = 0; tick < 2; tick++) {
+    act(() => vi.advanceTimersByTime(250));
+  }
   expect(view.container.querySelector('[data-phase="nearby"]')).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "We found each other" }));
   expect(screen.getByText("The simulated session has ended.")).toBeTruthy();
