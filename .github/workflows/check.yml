@@ -28,12 +28,9 @@ jobs:
       - run: npm run typecheck:worker
       - run: npm test
       - run: npm run build
-        if: ${{ !cancelled() }}
       - name: Install Firefox for remote UI checks
-        if: ${{ !cancelled() }}
         run: npx playwright install --with-deps firefox
       - name: Check UI in Firefox
-        if: ${{ !cancelled() }}
         run: |
           npm run preview -- --host 127.0.0.1 --port 4173 > /tmp/yonder-preview.log 2>&1 &
           preview_pid=$!
@@ -43,23 +40,7 @@ jobs:
             sleep 1
           done
           npm run smoke:browser
-      - name: Export temporary visual review images
-        if: always()
-        run: |
-          node --input-type=module <<'NODE'
-          import fs from 'node:fs';
-          for (const file of ['mobile-demo-direction.png', 'mobile-demo-weak.png', 'mobile-demo-nearby.png', 'mobile-preflight.png', 'small-mobile-demo-direction.png']) {
-            const path = 'test-results/browser/' + file;
-            if (!fs.existsSync(path)) continue;
-            const data = fs.readFileSync(path).toString('base64');
-            const count = Math.ceil(data.length / 10000);
-            for (let index = 0; index < count; index++) {
-              console.log('YONDER_IMAGE_FILE ' + path + ' ' + index + ' ' + count + ' ' + data.slice(index * 10000, (index + 1) * 10000));
-            }
-          }
-          NODE
       - run: npm run worker:check
-        if: ${{ !cancelled() }}
       - name: Print dependency failure diagnostics
         if: failure() && steps.install.conclusion == 'failure'
         run: |

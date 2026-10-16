@@ -4,7 +4,7 @@ A mobile-first arrow that helps two friends find each other. No map, accounts, n
 
 ## Status
 
-Frontend and Cloudflare Worker/Durable Object source are provided on this branch. **Undeployed:** no Cloudflare service, binding, domain, or account connection has been created. Physical iOS Safari and Android Chrome acceptance remains **PHYSICAL PENDING**. Passing automated checks does not prove real compass accuracy, hibernation, or production pairing.
+Frontend and Cloudflare Worker/Durable Object source are provided on this branch. Cloudflare deployment is managed by the user; this branch’s frontend changes await merge and deployment. Physical iOS Safari and Android Chrome acceptance remains **PHYSICAL PENDING**. Passing automated checks does not prove real compass accuracy, hibernation, or production pairing.
 
 ## Run and check
 
