@@ -151,3 +151,21 @@ it("reports actual coordinate age and removes nearby styling immediately when qu
   );
   expect(view.container.querySelector(".location-dot.nearby")).toBeNull();
 });
+
+it("keeps rounded distance and quality when fresh GPS has no compass", () => {
+  const now = Date.now(),
+    local = { latitude: 0, longitude: 0, accuracy: 5, timestamp: now },
+    peer = { ...local, latitude: 102 / 111195 };
+  const view = render(
+    <Guidance local={local} peer={peer} heading={null} connected visible />,
+  );
+  expect(screen.getByText("Compass direction unavailable")).toBeTruthy();
+  expect(screen.getByText("100 m")).toBeTruthy();
+  expect(screen.getByText(/Accuracy about ±10 m/)).toBeTruthy();
+  expect(view.container.querySelector(".direction-arrow")).toBeNull();
+  expect(view.container.querySelector(".guidance.awaiting-locations")).toBeNull();
+  view.rerender(
+    <Guidance local={null} peer={peer} heading={null} connected visible />,
+  );
+  expect(view.container.querySelector(".guidance.awaiting-locations")).toBeTruthy();
+});

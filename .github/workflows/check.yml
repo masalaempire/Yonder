@@ -40,16 +40,6 @@ jobs:
             sleep 1
           done
           npm run smoke:browser
-      - name: Export selected Firefox screenshots once
-        run: |
-          node --input-type=module <<'NODE'
-          import fs from 'node:fs';
-          for (const path of ['test-results/browser/small-mobile-demo.png', 'test-results/browser/mobile-live-finding.png']) {
-            const encoded = fs.readFileSync(path).toString('base64');
-            const count = Math.ceil(encoded.length / 12000);
-            for (let i = 0; i < count; i++) console.log('YONDER_IMAGE_FILE ' + path + ' ' + i + ' ' + count + ' ' + encoded.slice(i * 12000, (i + 1) * 12000));
-          }
-          NODE
       - run: npm run worker:check
       - name: Print dependency failure diagnostics
         if: failure() && steps.install.conclusion == 'failure'

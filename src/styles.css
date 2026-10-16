@@ -769,8 +769,8 @@ h2 {
   margin: 12px 0 22px;
 }
 .needs-sensors .guidance .direction-disc,
-.needs-sensors .guidance > .eyebrow,
-.needs-sensors .guidance .distance {
+.needs-sensors .guidance.awaiting-locations > .eyebrow,
+.needs-sensors .guidance.awaiting-locations .distance {
   display: none;
 }
 .needs-sensors .direction-status {

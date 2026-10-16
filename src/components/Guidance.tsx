@@ -120,7 +120,10 @@ export function Guidance({
       : (Math.round(quality.distance / 100) / 10).toFixed(1) + " km"
     : "—";
   return (
-    <section className="guidance" aria-label="Direction to your friend">
+    <section
+      className={"guidance " + (quality.fresh ? "" : "awaiting-locations")}
+      aria-label="Direction to your friend"
+    >
       <div
         className={"direction-disc " + (showArrow ? "available" : "")}
         aria-hidden="true"

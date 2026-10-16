@@ -142,6 +142,17 @@ try {
                 },
               }),
             );
+          } else if (message.type === "location") {
+            socket.send(
+              JSON.stringify({
+                type: "peer-location",
+                fix: {
+                  ...message.fix,
+                  latitude: 102 / 111195,
+                  timestamp: message.fix.timestamp + 1,
+                },
+              }),
+            );
           }
         });
       },
@@ -161,12 +172,64 @@ try {
       path: output + "/" + name + "-live-finding.png",
       fullPage: false,
     });
+    // Synthetic readings exercise the real permission controls without device sensors.
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, "permissions", {
+        configurable: true,
+        value: undefined,
+      });
+      Object.defineProperty(navigator, "geolocation", {
+        configurable: true,
+        value: {
+          watchPosition(success) {
+            success({
+              coords: { latitude: 0, longitude: 0, accuracy: 5 },
+              timestamp: Date.now(),
+            });
+            return 1;
+          },
+          clearWatch() {},
+        },
+      });
+      Object.defineProperty(window, "DeviceOrientationEvent", {
+        configurable: true,
+        value: class {
+          static requestPermission() {
+            return Promise.resolve("denied");
+          }
+        },
+      });
+    });
+    await page.getByRole("button", { name: "Enable location", exact: true }).click();
+    await page.getByText("Compass direction unavailable", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "Enable compass", exact: true }).click();
+    await page.getByText(/Compass permission was denied or revoked/).waitFor();
+    assert.match(await page.locator(".distance").innerText(), /~\\s*100 m/);
+    assert.match(await page.locator(".quality").innerText(), /Accuracy about ±10 m/);
+    assert.equal(await page.locator(".direction-arrow").count(), 0);
+    await page.locator(".distance").waitFor({ state: "visible" });
+    await aboveFooter(page, page.locator(".distance"));
+    await aboveFooter(page, page.locator(".quality"));
+    await aboveFooter(page, page.locator(".direction-status"));
+    await aboveFooter(page, page.getByRole("button", { name: "Enable compass", exact: true }));
+    const sensorBox = await page.locator(".sensor-tools").boundingBox();
+    const guidanceBox = await page.locator(".guidance").boundingBox();
+    assert(
+      sensorBox && guidanceBox && sensorBox.y + sensorBox.height <= guidanceBox.y,
+      "Sensor controls must not overlap guidance",
+    );
+    await visibleInViewport(page, page.getByRole("button", { name: "Stop sharing" }));
+    await noOverflow(page);
+    await page.screenshot({
+      path: output + "/" + name + "-live-no-compass.png",
+      fullPage: false,
+    });
     await page.getByRole("button", { name: "Stop sharing" }).click();
     await page.getByText("Until next time.").waitFor();
     console.log(
       "PASS " +
         name +
-        ": home/demo isolation, controls, live consent flow, unobscured guidance/permissions, persistent stop and no horizontal overflow",
+        ": home/demo isolation, controls, live consent flow, distance without compass, unobscured guidance/permissions, persistent stop and no horizontal overflow",
     );
     await context.close();
   }
