@@ -204,7 +204,7 @@ try {
     await page.getByText("Compass direction unavailable", { exact: true }).waitFor();
     await page.getByRole("button", { name: "Enable compass", exact: true }).click();
     await page.getByText(/Compass permission was denied or revoked/).waitFor();
-    assert.match(await page.locator(".distance").innerText(), /~\\s*100 m/);
+    assert.match(await page.locator(".distance").innerText(), /~\s*100 m/);
     assert.match(await page.locator(".quality").innerText(), /Accuracy about ±10 m/);
     assert.equal(await page.locator(".direction-arrow").count(), 0);
     await page.locator(".distance").waitFor({ state: "visible" });
