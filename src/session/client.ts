@@ -196,6 +196,7 @@ export class SessionClient {
       socket = this.makeSocket(url.href);
       this.socket = socket;
     } catch {
+      this.stopSensors();
       this.schedule(generation);
       return;
     }

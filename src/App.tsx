@@ -22,6 +22,13 @@ function compassReady(sensors: Sensors, now: number, after: number) {
       heading.accuracy >= 0 && heading.accuracy <= MAX_COMPASS_ACCURACY)) &&
     isFresh(heading, now, COMPASS_MAX_AGE) && heading.timestamp >= after;
 }
+function permissionLabel(status: Sensors["locationStatus"], compass = false) {
+  if (status === "idle") return "Not enabled";
+  if (status === "requesting") return compass ? "Waiting for compass…" : "Finding location…";
+  if (status === "denied") return "Access blocked";
+  if (status === "unavailable") return "Not available";
+  return "Try again";
+}
 const compassFailed = (sensors: Sensors) =>
   ["denied", "unavailable", "unusable", "error"].includes(sensors.compassStatus);
 
@@ -145,11 +152,11 @@ function PermissionSetup({ sensors, joining, foregroundAt, onCancel, onStart }: 
     <h1>Before you begin</h1>
     <p className="setup-note">Enable location and compass on this phone. Readings stay here until you both agree to share.</p>
     <div className="permission-row">
-      <span>Location</span><span role="status">{location ? "Ready" : sensors.locationStatus === "ready" ? "Needs a fresh reading" : sensors.locationStatus}</span>
+      <span>Location</span><span role="status">{location ? "Ready" : sensors.locationStatus === "ready" ? "Needs a fresh reading" : permissionLabel(sensors.locationStatus)}</span>
       <button className="secondary" onClick={() => { setDistanceOnly(false); sensors.requestLocation(); }}>Enable location</button>
     </div>
     <div className="permission-row">
-      <span>Compass</span><span role="status">{compass ? "Ready" : sensors.compassStatus === "ready" ? "Needs a fresh reading" : sensors.compassStatus}</span>
+      <span>Compass</span><span role="status">{compass ? "Ready" : sensors.compassStatus === "ready" ? "Needs a fresh reading" : permissionLabel(sensors.compassStatus, true)}</span>
       <button className="secondary" onClick={() => {
         setAttempted(true); setDistanceOnly(false);
         // Keep this call in the original tap, before any await.
@@ -178,12 +185,15 @@ function Live({ client, sensors, visible, foregroundAt, onExit }: {
   const state = useSyncExternalStore(client.subscribe, client.getSnapshot);
   const sensorsRef = useRef(sensors);
   sensorsRef.current = sensors;
-  const previousConsent = useRef(false);
+  const previousConsent = useRef({ self: false, peer: false });
   useEffect(() => {
     // Initial preflight readings are local only. Revocation after consent stops them.
-    if (previousConsent.current && !state.session?.selfConsent) sensorsRef.current.stop();
-    previousConsent.current = !!state.session?.selfConsent;
-  }, [state.session?.selfConsent]);
+    const self = !!state.session?.selfConsent;
+    const peer = !!state.session?.peerConsent;
+    if ((previousConsent.current.self && !self) || (previousConsent.current.peer && !peer))
+      sensorsRef.current.stop();
+    previousConsent.current = { self, peer };
+  }, [state.session?.selfConsent, state.session?.peerConsent]);
   useEffect(() => {
     if (sensors.locationStatus === "denied" && state.session?.selfConsent) client.stop();
   }, [client, sensors.locationStatus, state.session?.selfConsent]);
