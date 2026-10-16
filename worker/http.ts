@@ -35,7 +35,12 @@ export async function readJson(request: Request): Promise<Record<string, unknown
   const bytes = new Uint8Array(size); let offset = 0;
   for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
   try {
-    const result: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+    // Cloudflare's decoder types do not expose fatal mode. A UTF-8 round trip
+    // rejects malformed input without silently accepting replacement characters.
+    const text = new TextDecoder().decode(bytes);
+    const encoded = new TextEncoder().encode(text);
+    if (encoded.length !== bytes.length || encoded.some((byte, index) => byte !== bytes[index])) throw new Error();
+    const result: unknown = JSON.parse(text);
     if (!result || typeof result !== 'object' || Array.isArray(result)) throw new Error();
     return result as Record<string, unknown>;
   } catch { throw new SessionFault('invalid_json', 'Expected a JSON object.'); }
