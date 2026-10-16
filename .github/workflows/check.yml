@@ -10,17 +10,49 @@ jobs:
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      npm_config_cache: ${{ runner.temp }}/yonder-npm-cache
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
-      - run: npm install --no-audit --no-fund
+          node-version: '22.23.3'
+      - name: Use pinned npm
+        run: npm install --global npm@11.6.2 --no-audit --no-fund
+      - name: Install dependencies
+        id: install
+        run: |
+          npm --version
+          if [ -f package-lock.json ]; then
+            npm ci --no-audit --no-fund
+          else
+            npm install --no-audit --no-fund
+          fi
+      - name: Export initial remote lockfile
+        if: success() && hashFiles('package-lock.json') != ''
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const encoded = fs.readFileSync('package-lock.json').toString('base64');
+          for (let i = 0; i < encoded.length; i += 12000) console.log('YONDER_LOCK_CHUNK ' + encoded.slice(i, i + 12000));
+          NODE
       - run: npm run typecheck
       - run: npm run typecheck:worker
       - run: npm test
       - run: npm run build
       - run: npm run worker:check
+      - name: Print dependency failure diagnostics
+        if: failure() && steps.install.conclusion == 'failure'
+        run: |
+          for log in "$npm_config_cache"/_logs/*-debug-0.log; do
+            if [ -f "$log" ]; then tail -n 160 "$log"; fi
+          done
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: npm-debug-logs
+          path: ${{ runner.temp }}/yonder-npm-cache/_logs/
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         if: always()
         with:
