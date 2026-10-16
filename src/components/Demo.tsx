@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useId, useState } from "react";
 import { Guidance } from "./Guidance";
 import { FindingFrame } from "./FindingFrame";
 
 export default function Demo({ onExit }: { onExit: () => void }) {
+  const controlId = useId();
   const [heading, setHeading] = useState(0);
   const [distance, setDistance] = useState(85);
   const [poor, setPoor] = useState(false);
@@ -34,13 +35,13 @@ export default function Demo({ onExit }: { onExit: () => void }) {
       info={
         <div className="demo-controls">
           <p>Simulated. No sensors or network are used.</p>
-          <label>
+          <label htmlFor={controlId + "-heading"}>
             Turn your phone <output>{heading}°</output>
-            <input type="range" min="0" max="359" value={heading} onChange={(e) => setHeading(Number(e.target.value))} />
+            <input id={controlId + "-heading"} type="range" min="0" max="359" value={heading} onChange={(e) => setHeading(Number(e.target.value))} />
           </label>
-          <label>
+          <label htmlFor={controlId + "-distance"}>
             Move closer / away <output>{distance} m</output>
-            <input type="range" min="5" max="200" value={distance} onChange={(e) => setDistance(Number(e.target.value))} />
+            <input id={controlId + "-distance"} type="range" min="5" max="200" value={distance} onChange={(e) => setDistance(Number(e.target.value))} />
           </label>
           <label className="check"><input type="checkbox" checked={poor} onChange={(e) => setPoor(e.target.checked)} />Poor accuracy</label>
           <label className="check"><input type="checkbox" checked={lost} onChange={(e) => setLost(e.target.checked)} />Connection lost</label>

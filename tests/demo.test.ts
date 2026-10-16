@@ -52,9 +52,15 @@ it("offers live-equivalent weak and sustained nearby phases through simulated fi
   expect(view.container.querySelector('[data-phase="weak"]')).toBeTruthy();
   expect(view.container.querySelector(".distance")?.textContent).toBe("—");
   fireEvent.click(screen.getByLabelText("Stale location"));
-  fireEvent.change(screen.getByLabelText(/Move closer/), { target: { value: "5" } });
-  // Flush each guidance tick so the demo's 500ms fixes and 250ms clock
-  // remain chronological rather than batching a future fix with an old clock.
+  const distanceControl = screen.getByRole("slider", { name: /Move closer/ }) as HTMLInputElement;
+  expect(distanceControl.tagName).toBe("INPUT");
+  expect(distanceControl.type).toBe("range");
+  // The label must identify the slider, not the preceding labelable output.
+  expect(screen.getByLabelText(/Move closer/)).toBe(distanceControl);
+  fireEvent.change(distanceControl, { target: { value: "5" } });
+  expect(distanceControl.value).toBe("5");
+  expect(view.container.querySelector(".distance")?.textContent).toBe("~5 m");
+  // Flush each guidance tick so simulated fixes stay chronological.
   for (let tick = 0; tick < 9; tick++) {
     act(() => vi.advanceTimersByTime(250));
   }
