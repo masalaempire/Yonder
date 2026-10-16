@@ -1,0 +1,171 @@
+// @vitest-environment jsdom
+import { afterEach, expect, it, vi } from "vitest";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
+import React, { StrictMode } from "react";
+import App from "../src/App";
+import { Guidance, guidanceQuality } from "../src/components/Guidance";
+const sensorSpies = vi.hoisted(() => ({
+  stop: vi.fn(),
+  location: vi.fn(),
+  compass: vi.fn(),
+}));
+vi.mock("../src/sensors/useSensors", () => ({
+  useSensors: () => ({
+    location: null,
+    heading: null,
+    locationStatus: "idle",
+    compassStatus: "idle",
+    locationError: null,
+    compassError: null,
+    requestLocation: sensorSpies.location,
+    requestCompass: sensorSpies.compass,
+    stop: sensorSpies.stop,
+  }),
+}));
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+  window.history.replaceState(null, "", "/");
+  vi.unstubAllGlobals();
+  vi.clearAllMocks();
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    value: "visible",
+  });
+});
+it("home and invitation entry make no network request or permission request", () => {
+  const fetch = vi.fn();
+  vi.stubGlobal("fetch", fetch);
+  window.history.replaceState(null, "", "/#join=ABCD2345");
+  render(<App />);
+  expect((screen.getByLabelText("Invite code") as HTMLInputElement).value).toBe(
+    "ABCD2345",
+  );
+  expect(fetch).not.toHaveBeenCalled();
+  expect(screen.getByText(/Joining won’t turn on sensors/)).toBeTruthy();
+});
+it("avoids misleading arrows within combined uncertainty", () => {
+  const now = Date.now(),
+    a = { latitude: 0, longitude: 0, accuracy: 20, timestamp: now },
+    b = { ...a, latitude: 20 / 111195 },
+    h = {
+      degrees: 0,
+      timestamp: now,
+      reference: "true" as const,
+      source: "absolute" as const,
+      accuracy: 5,
+    };
+  expect(guidanceQuality(a, b, h, now, true, true).arrow).toBe(false);
+  expect(
+    guidanceQuality(a, { ...b, latitude: 100 / 111195 }, h, now, true, true)
+      .arrow,
+  ).toBe(true);
+  expect(guidanceQuality(a, b, h, now, true, false).arrow).toBe(false);
+});
+it("locally disables guidance when locations stop arriving", () => {
+  vi.useFakeTimers();
+  const now = Date.now(),
+    a = { latitude: 0, longitude: 0, accuracy: 5, timestamp: now },
+    b = { ...a, latitude: 100 / 111195 },
+    h = {
+      degrees: 0,
+      timestamp: now,
+      reference: "true" as const,
+      source: "absolute" as const,
+      accuracy: 5,
+    };
+  render(<Guidance local={a} peer={b} heading={h} connected visible />);
+  expect(screen.getByText("Head this way")).toBeTruthy();
+  act(() => vi.advanceTimersByTime(16000));
+  expect(screen.queryByText("Head this way")).toBeNull();
+  expect(screen.getByText("Waiting for fresh locations")).toBeTruthy();
+});
+it("survives strict-mode setup without cancelling an explicit session start", async () => {
+  const fetch = vi.fn().mockImplementation(() => new Promise(() => {}));
+  vi.stubGlobal("fetch", fetch);
+  render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  );
+  fireEvent.click(screen.getByRole("button", { name: /Create session/ }));
+  await Promise.resolve();
+  expect(screen.getByText("Making room", { exact: false })).toBeTruthy();
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
+it("stops real sensor sources when hidden and requires explicit sensor actions after foregrounding", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockImplementation(() => new Promise(() => {})),
+  );
+  render(<App />);
+  fireEvent.click(screen.getByRole("button", { name: /Create session/ }));
+  const previous = sensorSpies.stop.mock.calls.length;
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    value: "hidden",
+  });
+  fireEvent(document, new Event("visibilitychange"));
+  expect(sensorSpies.stop).toHaveBeenCalledTimes(previous + 1);
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    value: "visible",
+  });
+  fireEvent(document, new Event("visibilitychange"));
+  expect(sensorSpies.location).not.toHaveBeenCalled();
+  expect(sensorSpies.compass).not.toHaveBeenCalled();
+});
+it("reports actual coordinate age and removes nearby styling immediately when quality is lost", () => {
+  vi.useFakeTimers();
+  const now = Date.now(),
+    a = { latitude: 0, longitude: 0, accuracy: 5, timestamp: now },
+    b = { ...a, latitude: 5 / 111195 },
+    h = {
+      degrees: 0,
+      timestamp: now,
+      reference: "true" as const,
+      source: "absolute" as const,
+      accuracy: 5,
+    };
+  const view = render(
+    <Guidance local={a} peer={b} heading={h} connected visible />,
+  );
+  act(() => vi.advanceTimersByTime(3000));
+  expect(screen.getByText("You may be nearby")).toBeTruthy();
+  expect(view.container.querySelector(".location-dot.nearby")).toBeTruthy();
+  expect(screen.getByText(/updated 3s ago/)).toBeTruthy();
+  view.rerender(
+    <Guidance
+      local={{ ...a, accuracy: 70 }}
+      peer={b}
+      heading={h}
+      connected
+      visible
+    />,
+  );
+  expect(view.container.querySelector(".location-dot.nearby")).toBeNull();
+});
+
+it("keeps rounded distance and quality when fresh GPS has no compass", () => {
+  const now = Date.now(),
+    local = { latitude: 0, longitude: 0, accuracy: 5, timestamp: now },
+    peer = { ...local, latitude: 102 / 111195 };
+  const view = render(
+    <Guidance local={local} peer={peer} heading={null} connected visible />,
+  );
+  expect(screen.getByText("Compass direction unavailable")).toBeTruthy();
+  expect(screen.getByText("100 m")).toBeTruthy();
+  expect(screen.getByText(/Accuracy about ±10 m/)).toBeTruthy();
+  expect(view.container.querySelector(".direction-arrow")).toBeNull();
+  expect(view.container.querySelector(".guidance.awaiting-locations")).toBeNull();
+  view.rerender(
+    <Guidance local={null} peer={peer} heading={null} connected visible />,
+  );
+  expect(view.container.querySelector(".guidance.awaiting-locations")).toBeTruthy();
+});
