@@ -24,19 +24,6 @@ jobs:
         run: |
           npm --version
           npm ci --no-audit --no-fund
-      - name: Format frozen frontend source once
-        run: |
-          npx --yes prettier@3.6.2 --write src/App.tsx src/components/Guidance.tsx src/components/Demo.tsx src/session/client.ts src/styles.css src/main.tsx vite.config.ts tsconfig.json tsconfig.app.json tests/client.test.ts tests/frontend.test.tsx tests/demo.test.ts tests/browser-smoke.mjs index.html
-          node --input-type=module <<'NODE'
-          import fs from 'node:fs';
-          const source = 'f1c43e9d77f1e36e2a6dcac4572263cf49bc1252';
-          const paths = ["src/App.tsx","src/components/Guidance.tsx","src/components/Demo.tsx","src/session/client.ts","src/styles.css","src/main.tsx","vite.config.ts","tsconfig.json","tsconfig.app.json","tests/client.test.ts","tests/frontend.test.tsx","tests/demo.test.ts","tests/browser-smoke.mjs","index.html"];
-          for (const path of paths) {
-            const encoded = fs.readFileSync(path).toString('base64');
-            const count = Math.ceil(encoded.length / 12000);
-            for (let i = 0; i < count; i++) console.log('YONDER_FORMAT_FILE ' + source + ' ' + path + ' ' + i + ' ' + count + ' ' + encoded.slice(i * 12000, (i + 1) * 12000));
-          }
-          NODE
       - run: npm run typecheck
       - run: npm run typecheck:worker
       - run: npm test
