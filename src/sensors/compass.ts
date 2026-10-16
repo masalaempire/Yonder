@@ -32,16 +32,32 @@ export function projectedScreenHeading(alpha: number, beta: number, gamma: numbe
   return normalizeDegrees(Math.atan2(east, north) / RAD);
 }
 
+// Weak keys do not retain GPS fixes after Stop/unmount. The entry belongs only
+// to this exact measurement; a new fix or UTC day recomputes its local field.
+const declinations = new WeakMap<LocationFix, {
+  latitude: number; longitude: number; measuredAt: number; day: number;
+  starts: number; ends: number; degrees: number;
+}>();
+
 /** Entirely local WMM2025; no coordinates leave the browser. */
 export function declinationDegrees(location: LocationFix, timestamp: number): number | null {
   if (!isFresh(location, timestamp) || !Number.isFinite(location.latitude) || Math.abs(location.latitude) >= 90 ||
       !Number.isFinite(location.longitude) || Math.abs(location.longitude) > 180) return null;
+  const day = Math.floor(timestamp / 86_400_000);
+  const cached = declinations.get(location);
+  if (cached && cached.latitude === location.latitude && cached.longitude === location.longitude &&
+      cached.measuredAt === location.timestamp && cached.day === day &&
+      timestamp >= cached.starts && timestamp <= cached.ends) return cached.degrees;
   try {
     const magneticModel = model(new Date(timestamp), { allowOutOfBoundsModel: false });
     if (magneticModel.epoch !== 2025) return null;
+    const starts = magneticModel.start_date.getTime(), ends = magneticModel.end_date.getTime();
+    if (![starts, ends].every(Number.isFinite) || timestamp < starts || timestamp > ends) return null;
     const field = magneticModel.point([location.latitude, location.longitude]);
     // WMM caution/blackout zones: magnetic north is unreliable at low horizontal intensity.
     if (!Number.isFinite(field.decl) || !Number.isFinite(field.h) || field.h < 6_000) return null;
+    declinations.set(location, { latitude: location.latitude, longitude: location.longitude,
+      measuredAt: location.timestamp, day, starts, ends, degrees: field.decl });
     return field.decl;
   } catch { return null; }
 }

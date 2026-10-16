@@ -3,11 +3,13 @@ import { declinationDegrees, magneticToTrue, orientationToHeading, projectedScre
 import { createSensorController } from '../src/sensors/useSensors';
 import type { OrientationReading } from '../src/sensors/compass';
 
-const magnetic = vi.hoisted(() => ({ decl: 10, h: 30_000, epoch: 2025, fails: false }));
+const magnetic = vi.hoisted(() => ({ decl: 10, h: 30_000, epoch: 2025, fails: false, calls: 0 }));
 vi.mock('geomagnetism', () => ({
   model: () => {
+    magnetic.calls++;
     if (magnetic.fails) throw new Error('model unavailable');
-    return { epoch: magnetic.epoch, point: () => ({ decl: magnetic.decl, h: magnetic.h }) };
+    return { epoch: magnetic.epoch, start_date: new Date('2025-01-01'), end_date: new Date('2030-01-01'),
+      point: () => ({ decl: magnetic.decl, h: magnetic.h }) };
   },
 }));
 const NOW = Date.parse('2026-10-16T00:00:00Z');
@@ -17,7 +19,7 @@ const absolute: OrientationReading = { alpha: 0, beta: 0, gamma: 0, absolute: tr
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(NOW);
-  Object.assign(magnetic, { decl: 10, h: 30_000, epoch: 2025, fails: false });
+  Object.assign(magnetic, { decl: 10, h: 30_000, epoch: 2025, fails: false, calls: 0 });
 });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
@@ -64,6 +66,27 @@ describe('north reference and screen projection', () => {
     expect(declinationDegrees(location(), NOW)).toBeNull();
     magnetic.epoch = 2025; magnetic.fails = true;
     expect(declinationDegrees(location(), NOW)).toBeNull();
+  });
+  it('reuses the local field only for the same fresh GPS measurement and UTC day', () => {
+    const gps = location();
+    expect(declinationDegrees(gps, NOW)).toBe(10);
+    expect(declinationDegrees(gps, NOW + 100)).toBe(10);
+    expect(magnetic.calls).toBe(1);
+    expect(declinationDegrees(gps, NOW + 20_000)).toBeNull();
+    expect(magnetic.calls).toBe(1);
+    expect(declinationDegrees({ ...gps, longitude: 120 }, NOW)).toBe(10);
+    expect(magnetic.calls).toBe(2);
+    // Even a caller that mutates a fix cannot reuse the previous coordinates.
+    gps.longitude = 122;
+    expect(declinationDegrees(gps, NOW)).toBe(10);
+    expect(magnetic.calls).toBe(3);
+    const midnight = Date.parse('2026-10-16T23:59:59Z');
+    const overnight = { ...location(), timestamp: midnight };
+    expect(declinationDegrees(overnight, midnight)).toBe(10);
+    expect(declinationDegrees(overnight, midnight + 2_000)).toBe(10);
+    expect(magnetic.calls).toBe(5);
+    const outside = Date.parse('2040-01-01');
+    expect(declinationDegrees({ ...location(), timestamp: outside }, outside)).toBeNull();
   });
   it('confirms the installed dependency actually bundles WMM2025 and enforces its time range', async () => {
     const actual = await vi.importActual<typeof import('geomagnetism')>('geomagnetism');
@@ -134,6 +157,17 @@ describe('sensor lifecycle', () => {
     expect(browser.clearWatch).toHaveBeenCalledWith(7);
     expect(controller.getSnapshot()).toMatchObject({ location: null, heading: null, locationStatus: 'idle', compassStatus: 'idle' });
     expect(vi.getTimerCount()).toBe(0);
+  });
+  it('keeps sensor startup working when optional permission queries throw', async () => {
+    const browser = browserHarness();
+    Object.defineProperty(navigator, 'permissions', { value: { query: () => { throw new TypeError('unsupported'); } } });
+    const controller = createSensorController();
+    expect(() => controller.requestLocation()).not.toThrow();
+    browser.emitLocation();
+    await expect(controller.requestCompass()).resolves.toBeUndefined();
+    browser.emitOrientation();
+    expect(controller.getSnapshot().compassStatus).toBe('ready');
+    controller.stop();
   });
   it('calls iOS permission synchronously and discards in-flight permission after Stop', async () => {
     const browser = browserHarness();

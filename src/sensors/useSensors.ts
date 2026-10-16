@@ -61,13 +61,15 @@ export function createSensorController() {
     register: (remove: () => void) => void) => {
     if (!navigator.permissions?.query) return;
     // Optional permission descriptors are not implemented by every browser.
-    void navigator.permissions.query({ name: name as PermissionName }).then(permission => {
-      if (!live()) return;
-      const changed = () => { if (live() && permission.state === 'denied') revoked(); };
-      permission.addEventListener('change', changed);
-      register(() => permission.removeEventListener('change', changed));
-      changed();
-    }).catch(() => { /* Browser does not expose this permission descriptor. */ });
+    try {
+      void navigator.permissions.query({ name: name as PermissionName }).then(permission => {
+        if (!live()) return;
+        const changed = () => { if (live() && permission.state === 'denied') revoked(); };
+        permission.addEventListener('change', changed);
+        register(() => permission.removeEventListener('change', changed));
+        changed();
+      }).catch(() => { /* Browser does not expose this permission descriptor. */ });
+    } catch { /* Some browsers throw synchronously for optional descriptors. */ }
   };
 
   const invalidateHeading = () => {
