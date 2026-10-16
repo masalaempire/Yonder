@@ -28,9 +28,12 @@ jobs:
       - run: npm run typecheck:worker
       - run: npm test
       - run: npm run build
+        if: ${{ !cancelled() }}
       - name: Install Firefox for remote UI checks
+        if: ${{ !cancelled() }}
         run: npx playwright install --with-deps firefox
       - name: Check UI in Firefox
+        if: ${{ !cancelled() }}
         run: |
           npm run preview -- --host 127.0.0.1 --port 4173 > /tmp/yonder-preview.log 2>&1 &
           preview_pid=$!
@@ -56,6 +59,7 @@ jobs:
           }
           NODE
       - run: npm run worker:check
+        if: ${{ !cancelled() }}
       - name: Print dependency failure diagnostics
         if: failure() && steps.install.conclusion == 'failure'
         run: |
